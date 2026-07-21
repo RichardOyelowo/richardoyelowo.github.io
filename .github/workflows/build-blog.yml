@@ -37,5 +37,5 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "build: regenerate blog from markdown"
-            git push
+            git push origin main
           fi
