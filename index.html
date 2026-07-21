@@ -369,22 +369,29 @@ if (!prefersReducedMotion) {
     .then(function(r) { return r.json(); })
     .then(function(posts) {
       if (!posts || !posts.length) return;
+
       var count = Math.min(posts.length, 4);
+
       for (var i = 0; i < count; i++) {
         var p = posts[i];
+
         var card = document.createElement('a');
         card.href = './blog/' + p.slug + '.html';
         card.className = 'blog-card';
         card.setAttribute('aria-label', 'Read: ' + p.title);
+
         card.innerHTML =
           '<span class="blog-card-date">' + p.date + '</span>' +
           '<h3 class="blog-card-title">' + p.title + '</h3>' +
           '<p class="blog-card-excerpt">' + p.summary + '</p>' +
-          '<span class="blog-card-read">Read &rarr;</span>';
+          '<span class="blog-card-read">Read →</span>';
+
         grid.appendChild(card);
       }
     })
-    .catch(function() { });
+    .catch(function(err) {
+      console.error('Failed loading blog posts', err);
+    });
 })();
 </script>
 
