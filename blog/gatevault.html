@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why I Built gatevault and What Packaging for PyPI Taught Me &bull; Richard Oyelowo</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x2699;</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/post.css">
+</head>
+<body>
+
+<nav class="sub-nav">
+  <a href="../" class="nav-logo">Richard Oyelowo</a>
+  <a href="./" class="nav-back">&larr; All Posts</a>
+</nav>
+
+<article>
+  <div class="article-meta">2025-07-21</div>
+  <h1 class="article-title">Why I Built gatevault and What Packaging for PyPI Taught Me</h1>
+  <p class="article-summary">Most auth libraries do one thing. I kept solving the same auth problem across projects, so I packaged the solution.</p>
+  <div class="article-body">
+<h1>Why I Built gatevault and What Packaging for PyPI Taught Me</h1>
+<h2>The Problem I Kept Solving</h2>
+<p>Every backend project needs auth. Hash a password, verify credentials, create access and refresh tokens, protect routes, decode token payloads, raise useful errors. I was writing these same patterns in every project. FastAPI apps, Flask apps, scripts that needed OAuth2. Each time I would grab PyJWT for encoding, bcrypt for hashing, and then wire the whole flow together myself.</p>
+<p>Most Python auth libraries do one thing well. PyJWT gives you JWT encoding. bcrypt gives you password hashing. But you still have to write the login flow, build the guards, handle the exceptions, and repeat that boilerplate across every project. The integration work between these libraries was the real problem, and nobody was solving it in a framework-agnostic way.</p>
+<p>After the third time I copy-pasted my auth helpers into a new project, I decided to extract them into a proper package. That package became gatevault.</p>
+<h2>What gatevault Actually Does</h2>
+<p>gatevault is a Python auth library that handles four things in one coherent API:</p>
+<ol>
+<li><strong>JWT token management</strong> with access tokens (configurable expiry, default 15 minutes), refresh tokens (default 7 days), and tamper detection built on top of PyJWT</li>
+<li><strong>bcrypt password hashing</strong> with automatic salt management so you never accidentally skip salting</li>
+<li><strong>OAuth2 login flow</strong> that handles user lookup, credential verification, and token pair generation in one call</li>
+<li><strong>Route protection</strong> via a <code>@gate.protected</code> decorator that decodes the token, validates it, and injects the payload into any sync or async function</li>
+</ol>
+<p>The key design decision was framework-agnosticism. gatevault does not care if you are using FastAPI with async SQLAlchemy, Flask with a sync ORM, Django with its built-in ORM, or just plain Python scripts. There are integration examples for all four in the README, but the core library has zero framework imports.</p>
+<h2>The API I Wanted</h2>
+<p>Here is what I was aiming for:</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
+
+tm = TokenManager(
+    secret_key=SECRET,
+    access_expiry_minutes=15,
+    refresh_expiry_days=7
+)
+
+gate = GateVault(token_manager=tm)
+
+@gate.protected
+def get_profile(payload=None):
+    return db.get_user(payload[&quot;user_id&quot;])
+</code></pre>
+
+<p>One import, one instance, one decorator. The token payload gets injected directly into your function. No middleware configuration, no request object parsing, no framework-specific dependency injection. If you want the raw tokens, you can call <code>tm.create_token_pair(user_data)</code> directly. If you just want hashing, import <code>Hasher</code> alone. The library works as a whole or in parts.</p>
+<h2>Token Refresh and Rotation</h2>
+<p>The refresh flow was one of the trickier parts to get right. When a user's access token expires, they send their refresh token to get a new token pair. The question is: what happens to the old refresh token?</p>
+<p>The approach I settled on is family-based rotation. Each refresh token belongs to a "family" that traces back to the original login. When you use a refresh token, a new pair is generated and the used token is marked as rotated. If someone tries to reuse an already-rotated refresh token, the entire family is invalidated. This catches token theft: if an attacker replays a stolen refresh token after the legitimate user has already used it, the family gets killed and both the attacker and the legitimate user are forced to re-authenticate.</p>
+<p>This caught a subtle bug during testing. The initial implementation could accept an already-rotated refresh token if called twice in quick succession, because the rotation check was not atomic. The fix was to track rotation state in the token's claims and check it on every refresh attempt.</p>
+<h2>What I Learned Packaging for PyPI</h2>
+<h3>pyproject.toml is the Standard Now</h3>
+<p>I started with <code>setup.py</code> out of habit, then moved everything to <code>pyproject.toml</code>. It is cleaner. Dependencies, build system, metadata, and entry points all live in one file. If you are starting a new package today, skip <code>setup.py</code> entirely. The build backend I used is <code>setuptools</code> with <code>setuptools-scm</code>, but <code>hatch</code> and <code>flit</code> are also solid choices.</p>
+<h3>Dependency Management is a Design Decision</h3>
+<p>I made gatevault depend on PyJWT and bcrypt, but nothing else. No Flask, no FastAPI, no httpx. This was deliberate. Adding framework dependencies would have made the package heavier and limited its use cases. Users bring their own framework. gatevault just handles auth primitives.</p>
+<p>This meant I had to design the API to work without assuming any framework's request/response model. The <code>@gate.protected</code> decorator extracts the token from a keyword argument, not from a framework-specific header parser. The caller is responsible for pulling the token out of the request. This keeps the library honest and framework-free.</p>
+<h3>Exception Hierarchy Matters</h3>
+<p>Early on, gatevault raised raw PyJWT exceptions like <code>ExpiredSignatureError</code> and <code>InvalidTokenError</code>. These leak implementation details to the caller and make it hard to handle errors consistently. I wrapped all of this into a clean exception hierarchy:</p>
+<ul>
+<li><code>GateVaultError</code> (base)</li>
+<li><code>TokenExpiredError</code></li>
+<li><code>TokenInvalidError</code></li>
+<li><code>TokenMissingError</code></li>
+<li><code>HashingError</code></li>
+<li><code>OAuthError</code></li>
+</ul>
+<p>Now callers can catch <code>GateVaultError</code> broadly or handle specific cases. The internal PyJWT exceptions are still raised under the hood, but they never escape the package boundary. This is important for library design: your users should never need to import your dependencies to handle your errors.</p>
+<h3>Testing a Library is Different from Testing an App</h3>
+<p>With an application, you test endpoints and flows. With a library, you test contracts. Every public function has specific input/output behavior that callers depend on. I wrote a full pytest suite covering:</p>
+<ul>
+<li>Token creation and verification, including expiry and tamper detection</li>
+<li>Password hashing and verification with round-trip guarantees</li>
+<li>The protected decorator in both sync and async contexts</li>
+<li>Exception types for every failure mode</li>
+<li>Token refresh rotation and family-based invalidation</li>
+</ul>
+<p>The test suite is the most important part of the package. A library with no tests is a liability, not a tool.</p>
+<h3>CI and Automated PyPI Releases</h3>
+<p>I set up GitHub Actions to run the test suite on every push and automatically publish to PyPI when a new version tag is pushed. The workflow is straightforward: push to <code>main</code> and tests run. Push a tag like <code>v0.3.0</code> and tests run, then <code>twine upload</code> publishes to PyPI.</p>
+<p>This means I never manually build or upload. I bump the version in <code>pyproject.toml</code>, tag the commit, and GitHub does the rest. It eliminates the "did I publish the right version?" anxiety that comes with manual publishing.</p>
+<h2>What I Would Do Differently</h2>
+<p><strong>Type hints with stub files.</strong> I have inline type hints, but generating <code>.pyi</code> stub files would make IDE support better for users. Right now, type checkers can infer types from the source, but dedicated stub files are the standard for library packages.</p>
+<p><strong>Async-first design.</strong> I supported both sync and async from the start, but making it async-first with sync wrappers might have been cleaner architecturally. The current approach works, but the dual-path adds internal complexity.</p>
+<p><strong>More granular token claims.</strong> Right now you pass a dict of claims. A <code>TokenClaims</code> dataclass with validation would catch mistakes at creation time instead of at decode time. If you misspell a key in the claims dict, you will not find out until you try to decode the token later.</p>
+<h2>The Takeaway</h2>
+<p>gatevault is not trying to replace Auth0 or a full identity platform. It is for Python apps that need direct, understandable auth primitives without the overhead of a framework-specific solution. If you are building a FastAPI or Flask app and you are tired of wiring JWT, bcrypt, and OAuth2 together for the fifth time, it might save you an afternoon.</p>
+<hr />
+<p><em>If you want to dig into the code or see framework integration examples, the full README covers FastAPI (async and sync), Flask, Django, and Django REST Framework: <a href="https://github.com/RichardOyelowo/gatevault">github.com/RichardOyelowo/gatevault</a></em></p>
+  </div>
+</article>
+
+<footer role="contentinfo">
+  <div class="footer-inner">
+    <span class="footer-text">&copy; 2026 Richard Oyelowo</span>
+    <span class="footer-text">Built by Richard for the love of development</span>
+  </div>
+</footer>
+
+</body>
+</html>
