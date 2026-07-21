@@ -21,9 +21,11 @@
     <li role="none"><a href="#about" role="menuitem">About</a></li>
     <li role="none"><a href="#opensource" role="menuitem">OSS</a></li>
     <li role="none"><a href="#projects" role="menuitem">Projects</a></li>
-    <li role="none"><a href="#blog" role="menuitem">Blog</a></li>
     <li role="none"><a href="#stack" role="menuitem">Stack</a></li>
     <li role="none"><a href="#contact" role="menuitem">Contact</a></li>
+    <li role="none" class="nav-external">
+      <a href="./blog/" role="menuitem">Blog ↗</a>
+    </li>
   </ul>
 </nav>
 
@@ -199,7 +201,7 @@
         </p>
       </noscript>
     </div>
-    <div class="blog-view-all" id="blog-view-all" style="display:none;">
+    <div class="blog-view-all">
       <a href="./blog/">View All Posts &rarr;</a>
     </div>
   </div>
@@ -361,7 +363,6 @@ if (!prefersReducedMotion) {
 /* Load blog posts from posts.json */
 (function loadBlogPosts() {
   var grid = document.getElementById('blog-grid');
-  var viewAll = document.getElementById('blog-view-all');
   if (!grid) return;
 
   fetch('./blog/posts.json')
@@ -381,9 +382,6 @@ if (!prefersReducedMotion) {
           '<p class="blog-card-excerpt">' + p.summary + '</p>' +
           '<span class="blog-card-read">Read &rarr;</span>';
         grid.appendChild(card);
-      }
-      if (posts.length > 4 && viewAll) {
-        viewAll.style.display = 'block';
       }
     })
     .catch(function() { });
