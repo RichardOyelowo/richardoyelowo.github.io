@@ -1,6 +1,6 @@
 ---
 title: "Collision-Safe URL Shortening with an Atomic Base62 Counter"
-date: "2025-07"
+date: "2025-07-29"
 summary: "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The 4 bugs caught before launch."
 pinned: false
 ---

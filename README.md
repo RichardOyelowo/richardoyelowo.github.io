@@ -48,7 +48,7 @@ If you want to preview locally before pushing, run `python scripts/build_blog.py
 ```markdown
 ---
 title: Your Post Title Here
-date: 2026-07
+date: 2026-06-29
 summary: A one or two sentence description that appears on the blog cards.
 pinned: true
 ---
@@ -79,7 +79,7 @@ CI runs automatically. The generated HTML, `posts.json`, and listing page are co
 | Field     | Required | Description                                      |
 |-----------|----------|--------------------------------------------------|
 | `title`   | Yes      | Post title                                       |
-| `date`    | Yes      | Display date (e.g. `2026-07`, `2026-07-22`)       |
+| `date`    | Yes      | Display date (e.g. `2026-07-01`, `2026-07-22`)   |
 | `summary` | Yes      | Short description for blog listing cards         |
 | `pinned`  | No       | `true` to pin to top of listing (max 3 pinned)   |
 
