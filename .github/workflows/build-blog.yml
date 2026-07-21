@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -29,28 +29,24 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
+        run: pip install markdown --break-system-packages
+
+      - name: Generate blog
+        run: python scripts/build_blog.py
+
+      - name: Commit generated files
         run: |
-          pip install markdown --break-system-packages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Generate blog HTML
-        run: |
-          python scripts/build_blog.py
+          git add blog/
 
-      - name: Debug generated files
-        run: |
-          echo "Current directory:"
-          pwd
-
-          echo "Blog folder:"
-          ls -la blog || true
-
-          echo "All generated html:"
-          find . -name "*.html" -type f
-
-      - name: Verify generated blog
-        run: |
-          echo "Generated blog files:"
-          ls -la blog
+          if git diff --cached --quiet; then
+            echo "No blog changes"
+          else
+            git commit -m "build: regenerate blog"
+            git push
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -64,15 +60,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
-    permissions:
-      pages: write
-      id-token: write
-
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
