@@ -1,6 +1,6 @@
 # Richard Oyelowo — Portfolio Site
 
-GitHub Pages portfolio. Static HTML/CSS/JS, no framework, no build step for the core site. Blog posts are the only thing that need a build step.
+GitHub Pages portfolio. Static HTML/CSS/JS, no framework. Blog posts are built automatically by CI when you push markdown changes.
 
 ## File Structure
 
@@ -31,11 +31,15 @@ GitHub Pages portfolio. Static HTML/CSS/JS, no framework, no build step for the 
 ## How the Blog Pipeline Works
 
 1. You write markdown in `blog_markdown/` with YAML frontmatter
-2. You run the build script
-3. The script generates HTML files in `blog/`, updates `posts.json`, and rebuilds `blog/index.html`
-4. The homepage fetches `blog/posts.json` via JS to render blog cards dynamically
+2. You push to GitHub
+3. GitHub Actions runs the build script automatically
+4. The script generates HTML files in `blog/`, updates `posts.json`, and rebuilds `blog/index.html`
+5. The bot commits the generated files back to the repo
+6. The homepage fetches `blog/posts.json` via JS to render blog cards dynamically
 
-No build step needed for the homepage itself. Only blog changes require running the script.
+You do not need to run anything locally. Just push markdown and the CI handles the rest.
+
+If you want to preview locally before pushing, run `python scripts/build_blog.py` manually.
 
 ## Adding a New Blog Post
 
@@ -58,13 +62,17 @@ Regular paragraphs. Code blocks, lists, tables, blockquotes — all supported.
 `inline code` works too.
 ```
 
-2. Run the build script:
+2. Commit and push:
 
 ```bash
-python scripts/build_blog.py
+git add .
+git commit -m "Add my-new-post"
+git push
 ```
 
-3. Commit and push. Done.
+CI runs automatically. The generated HTML, `posts.json`, and listing page are committed back by the bot. Nothing else to do.
+
+**Optional local preview:** run `python scripts/build_blog.py` before pushing to check the output.
 
 ## Frontmatter Fields
 
@@ -81,7 +89,7 @@ Add `pinned: true` to frontmatter. Maximum 3 posts can be pinned. Pinned posts a
 
 ## Deleting a Blog Post
 
-Delete the `.md` file from `blog_markdown/` and run the build script. The script automatically removes the orphaned HTML file from `blog/`.
+Delete the `.md` file from `blog_markdown/`, commit, and push. CI runs the build script which automatically removes the orphaned HTML file from `blog/`.
 
 ## Build Script Details
 
@@ -100,45 +108,49 @@ All styling lives in `css/`:
 
 The CSS uses custom properties defined in `base.css`. Change a color or spacing once and it propagates everywhere.
 
+## CI (GitHub Actions)
+
+The workflow at `.github/workflows/build-blog.yml` runs automatically when you push changes to:
+
+- `blog_markdown/**` (any markdown file)
+- `blog/template.html`
+- `scripts/build_blog.py`
+
+It installs the `markdown` Python package, runs the build script, and commits any generated file changes back to the repo using `github-actions[bot]`. If nothing changed, it skips the commit.
+
+You can also trigger it manually from the Actions tab on GitHub ("Run workflow").
+
 ## Deploying
 
-This is a GitHub Pages site. Push to the `main` branch (or whichever branch is configured for Pages) and GitHub serves it automatically. The generated blog files need to be committed alongside the source files since GitHub Pages serves static files directly.
+This is a GitHub Pages site. Push to the `main` branch (or whichever branch is configured for Pages) and GitHub serves it automatically. CI handles generating the blog files, so the repo always has the latest static output ready to serve.
 
 ## Quick Reference
 
-# Add a new post
 ```bash
+# Add a new post (CI handles the build)
 vim blog_markdown/my-new-post.md
-python scripts/build_blog.py
 git add .
 git commit -m "Add my-new-post"
 git push
-```
-
 
 # Update an existing post
-```bash
 vim blog_markdown/existing-post.md
-python scripts/build_blog.py
 git add .
 git commit -m "Update existing-post"
 git push
-```
 
 # Delete a post
-```bash
 rm blog_markdown/old-post.md
-python scripts/build_blog.py
 git add .
 git commit -m "Remove old-post"
 git push
-```
 
-
-# Tweak styles
-```bash
+# Tweak styles (no build needed)
 vim css/homepage.css
 git add .
 git commit -m "Style update"
 git push
+
+# Local preview only (not required for deploy)
+python scripts/build_blog.py
 ```
