@@ -36,6 +36,17 @@ jobs:
         run: |
           python scripts/build_blog.py
 
+      - name: Debug generated files
+        run: |
+          echo "Current directory:"
+          pwd
+
+          echo "Blog folder:"
+          ls -la blog || true
+
+          echo "All generated html:"
+          find . -name "*.html" -type f
+
       - name: Verify generated blog
         run: |
           echo "Generated blog files:"
