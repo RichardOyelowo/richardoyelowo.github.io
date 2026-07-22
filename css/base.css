@@ -94,7 +94,10 @@ footer {
   max-width: var(--max-w); margin: 0 auto; padding: 0 var(--page-pad);
   display: flex; justify-content: space-between; align-items: center;
 }
-.footer-text { font-size: 0.6rem; color: var(--text-dim); }
+.footer-text {
+  font-size: 0.62rem;
+  color: var(--text-mid);
+}
 
 /* ANIMATIONS */
 @keyframes fadeUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
