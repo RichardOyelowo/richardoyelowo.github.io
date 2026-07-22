@@ -298,8 +298,11 @@
    CONTACT — clean card grid
    ============================================================ */
 .contact-intro {
-  font-size: 0.8rem; color: var(--text-mid); line-height: 1.9;
-  margin-bottom: 28px; max-width: 560px;
+  font-size: 0.82rem;
+  color: var(--text-mid);
+  line-height: 2;
+  margin-bottom: 32px;
+  max-width: 900px;
 }
 .contact-intro strong { color: var(--amber); font-weight: 500; }
 .contact-grid {
