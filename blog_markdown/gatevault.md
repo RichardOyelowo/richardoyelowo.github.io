@@ -11,7 +11,7 @@ pinned: true
 
 Every backend project needs auth. Hash a password, verify credentials, create access and refresh tokens, protect routes, decode token payloads, raise useful errors. I was writing these same patterns in every project. FastAPI apps, Flask apps, scripts that needed OAuth2. Each time I would grab PyJWT for encoding, bcrypt for hashing, and then wire the whole flow together myself.
 
-Most Python auth libraries do one thing well. PyJWT gives you JWT encoding. bcrypt gives you password hashing. But you still have to write the login flow, build the guards, handle the exceptions, and repeat that boilerplate across every project. The integration work between these libraries was the real problem, and nobody was solving it in a framework-agnostic way.
+Most Python auth libraries do one thing well. PyJWT gives you JWT encoding. bcrypt gives you password hashing. But you still have to write the login flow, build the guards, handle the exceptions, and repeat that boilerplate across every project. The integration work between these libraries was the real problem, and I could not find a framework-agnostic solution that matched how I wanted to build applications.
 
 After the third time I copy-pasted my auth helpers into a new project, I decided to extract them into a proper package. That package became gatevault.
 
@@ -162,7 +162,7 @@ The refresh flow was one of the trickier parts to get right. When a user's acces
 
 A common approach for implementing refresh token rotation is family-based rotation. Each refresh token belongs to a "family" that traces back to the original login. When a refresh token is used, the application generates a new pair and marks the used token as rotated. If someone tries to reuse an already-rotated refresh token, the entire family is invalidated. This catches token theft: if an attacker replays a stolen refresh token after the legitimate user has already used it, the family gets killed and both the attacker and the legitimate user are forced to re-authenticate.
 
-This caught a subtle bug during testing. The initial implementation could accept an already-rotated refresh token if called twice in quick succession, because the rotation check was not atomic. The fix was to make the rotation check atomic. Refresh token state cannot rely only on the JWT payload because the token itself is immutable after issuance. The application must maintain external state for used tokens or token families, ensuring that concurrent refresh attempts cannot both succeed.
+During development, this exposed a subtle concurrency issue. An early implementation could accept an already-rotated refresh token if called twice in quick succession because the rotation check was not atomic. The fix was to make the rotation check atomic. Refresh token state cannot rely only on the JWT payload because the token itself is immutable after issuance. The application must maintain external state for used tokens or token families, ensuring that concurrent refresh attempts cannot both succeed.
 
 Access tokens are intentionally short-lived. Refresh tokens allow applications to obtain new access tokens without requiring users to authenticate again.
 
