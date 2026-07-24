@@ -1,6 +1,6 @@
 {
-  "clustra-rbac": "9ed6d10626c8fb03bd35adc48e5c9b96261db8f4a4dd080b6ae8082a3c7906eb",
-  "gatevault": "9cb8e95bc477bcbd1380ac076d0a00d18bd80c25d0160bd43fa2ea6dd2f8e3f0",
-  "multi-tenant-isolation": "b9638d5b0494ce336334485475ab5679fa7e4f600b32b15cce7bc4daf4bc39cb",
-  "snip-base62": "35bc34ff4cea9d0daf5607ee1ea02c127cd81571bfac6e96cb32fabb48329901"
+  "clustra-rbac": "a3684e73540e8e772e0d53bebb794585cb4d82f8064636216ebe689a23bba812",
+  "gatevault": "bd6382f1e2c8c4a60e92a0c91feec7fecd252a16aa6f196079a0d24bccc2c313",
+  "multi-tenant-isolation": "5ade7e38074146a71e702d338544eecd3e44be4120cffeeb805666bebb09952b",
+  "snip-base62": "aaae49e0479e6647f6f30e4a6436defa980603c8c9db596eb290b6f9dbfe4afe"
 }

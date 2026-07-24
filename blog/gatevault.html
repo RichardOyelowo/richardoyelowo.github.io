@@ -24,17 +24,31 @@
 <h1>Why I Built gatevault and What Packaging for PyPI Taught Me</h1>
 <h2>The Problem I Kept Solving</h2>
 <p>Every backend project needs auth. Hash a password, verify credentials, create access and refresh tokens, protect routes, decode token payloads, raise useful errors. I was writing these same patterns in every project. FastAPI apps, Flask apps, scripts that needed OAuth2. Each time I would grab PyJWT for encoding, bcrypt for hashing, and then wire the whole flow together myself.</p>
-<p>Most Python auth libraries do one thing well. PyJWT gives you JWT encoding. bcrypt gives you password hashing. But you still have to write the login flow, build the guards, handle the exceptions, and repeat that boilerplate across every project. The integration work between these libraries was the real problem, and nobody was solving it in a framework-agnostic way.</p>
+<p>Most Python auth libraries do one thing well. PyJWT gives you JWT encoding. bcrypt gives you password hashing. But you still have to write the login flow, build the guards, handle the exceptions, and repeat that boilerplate across every project. The integration work between these libraries was the real problem, and I could not find a framework-agnostic solution that matched how I wanted to build applications.</p>
 <p>After the third time I copy-pasted my auth helpers into a new project, I decided to extract them into a proper package. That package became gatevault.</p>
 <h2>What gatevault Actually Does</h2>
 <p>gatevault is a Python auth library that handles four things in one coherent API:</p>
 <ol>
 <li><strong>JWT token management</strong> with access tokens (configurable expiry, default 15 minutes), refresh tokens (default 7 days), and tamper detection built on top of PyJWT</li>
 <li><strong>bcrypt password hashing</strong> with automatic salt management so you never accidentally skip salting</li>
-<li><strong>OAuth2 login flow</strong> that handles user lookup, credential verification, and token pair generation in one call</li>
+<li><strong>OAuth2-compatible bearer token authentication flow</strong> that handles user lookup, credential verification, and token pair generation in one call</li>
 <li><strong>Route protection</strong> via a <code>@gate.protected</code> decorator that decodes the token, validates it, and injects the payload into any sync or async function</li>
 </ol>
 <p>The key design decision was framework-agnosticism. gatevault does not care if you are using FastAPI with async SQLAlchemy, Flask with a sync ORM, Django with its built-in ORM, or just plain Python scripts. There are integration examples for all four in the README, but the core library has zero framework imports.</p>
+<h2>Design Decisions</h2>
+<p>gatevault intentionally focuses on authentication primitives rather than application-specific identity management.</p>
+<p>It handles:
+- password hashing
+- token generation
+- token validation
+- authentication guards</p>
+<p>It does not manage:
+- users
+- databases
+- sessions
+- authorization rules
+- refresh token persistence</p>
+<p>Keeping these concerns separate allows applications to adopt gatevault without being forced into a specific data model or architecture.</p>
 <h2>The API I Wanted</h2>
 <p>Here is what I was aiming for:</p>
 <pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
@@ -52,28 +66,176 @@ def get_profile(payload=None):
     return db.get_user(payload[&quot;user_id&quot;])
 </code></pre>
 
-<p>One import, one instance, one decorator. The token payload gets injected directly into your function. No middleware configuration, no request object parsing, no framework-specific dependency injection. If you want the raw tokens, you can call <code>tm.create_token_pair(user_data)</code> directly. If you just want hashing, import <code>Hasher</code> alone. The library works as a whole or in parts.</p>
+<p>One import, one instance, one decorator. The token payload gets injected directly into your function. No middleware configuration, no request object parsing, no framework-specific dependency injection. If you want the raw tokens, you can call <code>tm.create_access_token(user_id)</code> and <code>tm.create_refresh_token(user_id)</code> directly. If you just want hashing, import <code>hash_password</code> and <code>verify_password</code> as standalone functions. The library works as a whole or in parts.</p>
+<p>User IDs are flexible. The library supports <code>int</code>, <code>str</code>, and <code>UUID</code> out of the box through a <code>normalize_user_id</code> function that runs before encoding. If your app uses something custom, you can pass your own encoder callable to <code>TokenManager</code>:</p>
+<pre class="highlight"><code class="language-python">from uuid import UUID
+from gatevault import TokenManager
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+tm.create_access_token(user_id=1)                    # int
+tm.create_access_token(user_id=&quot;user-abc-123&quot;)       # str
+tm.create_access_token(user_id=UUID(&quot;a1b2c3d4-...&quot;)) # UUID, serialized to str automatically
+</code></pre>
+
+<p>Extra claims go through <code>**kwargs</code> and end up in the decoded payload. This lets you attach role, org, or permission data without any extra configuration:</p>
+<pre class="highlight"><code class="language-python">access = tm.create_access_token(user_id=42, role=&quot;admin&quot;, org_id=&quot;richard-corp&quot;)
+
+payload = tm.decode_token(access)
+print(payload[&quot;role&quot;])     # admin
+print(payload[&quot;org_id&quot;])  # richard-corp
+</code></pre>
+
+<p>The standalone hashing API is intentionally simple. Two functions, no classes to instantiate:</p>
+<pre class="highlight"><code class="language-python">from gatevault import hash_password, verify_password
+
+hashed = hash_password(&quot;user_password_123&quot;)
+# $2b$12$examplebcrypthash...
+
+is_valid = verify_password(&quot;user_password_123&quot;, hashed)   # True
+is_valid = verify_password(&quot;wrong_password&quot;, hashed)       # False
+</code></pre>
+
+<p>Salt is generated and embedded automatically by bcrypt. You store the full hash string in your database. When verifying, bcrypt extracts the salt from the stored hash and uses it to re-hash the input. There is no separate salt column and no way to accidentally hash without one. If anything goes wrong internally, it raises a <code>HashingError</code> instead of a raw bcrypt exception.</p>
+<p>For the full login flow, <code>OAuthHandler</code> wires together user lookup, password verification, and token generation in one call. You provide a <code>get_user</code> callable that returns an object with <code>id</code> and <code>hashed_password</code> attributes:</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, OAuthHandler
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+# Sync user lookup
+def get_user_from_db(username: str):
+    return db.execute(&quot;SELECT id, hashed_password FROM users WHERE email = ?&quot;, (username,)).fetchone()
+
+handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
+tokens = handler.login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
+# {&quot;access_token&quot;: &quot;eyJ...&quot;, &quot;refresh_token&quot;: &quot;eyJ...&quot;, &quot;token_type&quot;: &quot;bearer&quot;}
+</code></pre>
+
+<p>For async codebases, use <code>async_login</code> with an async <code>get_user</code>:</p>
+<pre class="highlight"><code class="language-python">async def get_user(username: str):
+    result = await db.execute(select(User).where(User.email == username))
+    return result.scalar_one_or_none()
+
+handler = OAuthHandler(token_manager=tm, get_user=get_user)
+tokens = await handler.async_login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
+</code></pre>
+
+<p>Three distinct exceptions cover every login failure. <code>InvalidCredentialsError</code> when no user is found, <code>UnauthorizedError</code> when the password does not match, <code>GuardError</code> when token creation fails (for example, if the user ID is an unsupported type).</p>
+<p>The decorator works with both sync and async functions. It inspects the function and returns the appropriate wrapper automatically, so you do not have to think about it:</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
+
+gate = GateVault(token_manager=tm)
+
+# Sync
+@gate.protected
+def get_orders(payload=None):
+    return db.get_orders(payload[&quot;user_id&quot;])
+
+# Async
+@gate.protected
+async def get_orders_async(payload=None):
+    return await db.fetch_orders(payload[&quot;user_id&quot;])
+
+# Call either by passing the token kwarg
+get_orders(token=&quot;eyJhbGci...&quot;)
+</code></pre>
+
+<p>The decorator extracts the token from the <code>token</code> keyword argument. This is deliberate. gatevault does not parse framework-specific request objects. The caller pulls the token out of the <code>Authorization</code> header or cookie in their framework, then passes it in. This keeps the library honest and framework-free.</p>
 <h2>Token Refresh and Rotation</h2>
 <p>The refresh flow was one of the trickier parts to get right. When a user's access token expires, they send their refresh token to get a new token pair. The question is: what happens to the old refresh token?</p>
-<p>The approach I settled on is family-based rotation. Each refresh token belongs to a "family" that traces back to the original login. When you use a refresh token, a new pair is generated and the used token is marked as rotated. If someone tries to reuse an already-rotated refresh token, the entire family is invalidated. This catches token theft: if an attacker replays a stolen refresh token after the legitimate user has already used it, the family gets killed and both the attacker and the legitimate user are forced to re-authenticate.</p>
-<p>This caught a subtle bug during testing. The initial implementation could accept an already-rotated refresh token if called twice in quick succession, because the rotation check was not atomic. The fix was to track rotation state in the token's claims and check it on every refresh attempt.</p>
+<p>A common approach for implementing refresh token rotation is family-based rotation. Each refresh token belongs to a "family" that traces back to the original login. When a refresh token is used, the application generates a new pair and marks the used token as rotated. If someone tries to reuse an already-rotated refresh token, the entire family is invalidated. This catches token theft: if an attacker replays a stolen refresh token after the legitimate user has already used it, the family gets killed and both the attacker and the legitimate user are forced to re-authenticate.</p>
+<p>During development, this exposed a subtle concurrency issue. An early implementation could accept an already-rotated refresh token if called twice in quick succession because the rotation check was not atomic. The fix was to make the rotation check atomic. Refresh token state cannot rely only on the JWT payload because the token itself is immutable after issuance. The application must maintain external state for used tokens or token families, ensuring that concurrent refresh attempts cannot both succeed.</p>
+<p>Access tokens are intentionally short-lived. Refresh tokens allow applications to obtain new access tokens without requiring users to authenticate again.</p>
+<p>JWT access tokens are stateless by design, meaning they cannot be individually revoked after issuance without external state.</p>
+<p>gatevault therefore provides the primitives required for refresh token workflows but leaves persistence, rotation, and revocation decisions to the consuming application. The <code>TokenManager</code> gives you token creation and decoding. The refresh endpoint itself is application-level code:</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+def refresh_tokens(refresh_token: str) -&gt; dict:
+    payload = tm.decode_token(refresh_token)
+
+    if payload[&quot;type&quot;] != &quot;refresh&quot;:
+        raise ValueError(&quot;Expected refresh token&quot;)
+
+    # Your app handles rotation/revocation here
+    # e.g. check if this token has been rotated already
+
+    new_access = tm.create_access_token(user_id=payload[&quot;user_id&quot;])
+    new_refresh = tm.create_refresh_token(user_id=payload[&quot;user_id&quot;])
+
+    return {
+        &quot;access_token&quot;: new_access,
+        &quot;refresh_token&quot;: new_refresh,
+        &quot;token_type&quot;: &quot;bearer&quot;
+    }
+</code></pre>
+
+<p>Applications that require token rotation or immediate invalidation can store refresh token identifiers externally and enforce their own lifecycle policies.</p>
 <h2>What I Learned Packaging for PyPI</h2>
 <h3>pyproject.toml is the Standard Now</h3>
-<p>I started with <code>setup.py</code> out of habit, then moved everything to <code>pyproject.toml</code>. It is cleaner. Dependencies, build system, metadata, and entry points all live in one file. If you are starting a new package today, skip <code>setup.py</code> entirely. The build backend I used is <code>setuptools</code> with <code>setuptools-scm</code>, but <code>hatch</code> and <code>flit</code> are also solid choices.</p>
+<p>I started with <code>setup.py</code> out of habit, then moved everything to <code>pyproject.toml</code> with <code>hatchling</code> as the build backend. It is cleaner. Dependencies, build system, metadata, and entry points all live in one file. If you are starting a new package today, skip <code>setup.py</code> entirely.</p>
+<pre class="highlight"><code class="language-toml">[build-system]
+requires = [&quot;hatchling&quot;]
+build-backend = &quot;hatchling.build&quot;
+
+[tool.hatch.build.targets.wheel]
+packages = [&quot;src/gatevault&quot;]
+
+[project]
+name = &quot;richard-gatevault&quot;
+version = &quot;1.0.6&quot;
+requires-python = &quot;&gt;=3.9&quot;
+dependencies = [&quot;PyJWT&quot;, &quot;bcrypt&quot;]
+</code></pre>
+
+<p>The <code>src</code> layout with <code>packages = ["src/gatevault"]</code> prevents accidental imports of the local directory instead of the installed package during development. Python finds packages on the path, and without the <code>src/</code> directory, the local uninstalled code can shadow the pip-installed version. Small detail, saves debugging time.</p>
 <h3>Dependency Management is a Design Decision</h3>
-<p>I made gatevault depend on PyJWT and bcrypt, but nothing else. No Flask, no FastAPI, no httpx. This was deliberate. Adding framework dependencies would have made the package heavier and limited its use cases. Users bring their own framework. gatevault just handles auth primitives.</p>
-<p>This meant I had to design the API to work without assuming any framework's request/response model. The <code>@gate.protected</code> decorator extracts the token from a keyword argument, not from a framework-specific header parser. The caller is responsible for pulling the token out of the request. This keeps the library honest and framework-free.</p>
+<p>I made gatevault depend on PyJWT and bcrypt, but nothing else. No Flask, no FastAPI, no httpx. This was deliberate. Adding framework dependencies would have made the package heavier and limited its use cases. Users bring their own framework. gatevault just handles auth primitives. If framework-specific conveniences are added in the future, they should live in optional integrations rather than the core package.</p>
+<p>This meant I had to design the API to work without assuming any framework's request/response model. The <code>OAuthHandler</code> accepts a plain <code>get_user</code> callable instead of a database connection. The <code>@gate.protected</code> decorator extracts the token from a keyword argument, not from a framework-specific header parser. The caller is responsible for pulling the token out of the request. This keeps the library honest and framework-free.</p>
+<p>If the secret key is shorter than 32 bytes, gatevault does not block you but issues a <code>ShortKeyWarning</code>. This is intentional. During development you might use a short key for convenience, but you should always use at least 32 bytes in production. HS256 with a short secret is not secure.</p>
 <h3>Exception Hierarchy Matters</h3>
 <p>Early on, gatevault raised raw PyJWT exceptions like <code>ExpiredSignatureError</code> and <code>InvalidTokenError</code>. These leak implementation details to the caller and make it hard to handle errors consistently. I wrapped all of this into a clean exception hierarchy:</p>
 <ul>
-<li><code>GateVaultError</code> (base)</li>
+<li><code>GatevaultError</code> (base)</li>
+<li><code>TokenError</code> (token base)<ul>
 <li><code>TokenExpiredError</code></li>
-<li><code>TokenInvalidError</code></li>
-<li><code>TokenMissingError</code></li>
-<li><code>HashingError</code></li>
-<li><code>OAuthError</code></li>
+<li><code>InvalidTokenError</code></li>
+<li><code>TokenDecodeError</code></li>
 </ul>
-<p>Now callers can catch <code>GateVaultError</code> broadly or handle specific cases. The internal PyJWT exceptions are still raised under the hood, but they never escape the package boundary. This is important for library design: your users should never need to import your dependencies to handle your errors.</p>
+</li>
+<li><code>HashingError</code></li>
+<li><code>GuardError</code> (guard base)<ul>
+<li><code>InvalidCredentialsError</code></li>
+<li><code>UnauthorizedError</code></li>
+</ul>
+</li>
+</ul>
+<p>Now callers can catch <code>GatevaultError</code> broadly or handle specific cases. The internal PyJWT exceptions are still raised under the hood, but they never escape the package boundary. This is important for library design: your users should never need to import your dependencies to handle your errors.</p>
+<pre class="highlight"><code class="language-python">from gatevault import (
+    GatevaultError, TokenExpiredError,
+    InvalidTokenError, GuardError,
+    HashingError, InvalidCredentialsError,
+    UnauthorizedError
+)
+
+# Broad catch-all
+try:
+    payload = tm.decode_token(token)
+except GatevaultError as e:
+    return {&quot;error&quot;: str(e)}
+
+# Granular handling for login failures
+try:
+    tokens = handler.login(email, password)
+except InvalidCredentialsError:
+    return {&quot;error&quot;: &quot;No account found&quot;}
+except UnauthorizedError:
+    return {&quot;error&quot;: &quot;Wrong password&quot;}
+except GuardError as e:
+    return {&quot;error&quot;: f&quot;Auth error: {e}&quot;}
+</code></pre>
+
 <h3>Testing a Library is Different from Testing an App</h3>
 <p>With an application, you test endpoints and flows. With a library, you test contracts. Every public function has specific input/output behavior that callers depend on. I wrote a full pytest suite covering:</p>
 <ul>
@@ -85,12 +247,12 @@ def get_profile(payload=None):
 </ul>
 <p>The test suite is the most important part of the package. A library with no tests is a liability, not a tool.</p>
 <h3>CI and Automated PyPI Releases</h3>
-<p>I set up GitHub Actions to run the test suite on every push and automatically publish to PyPI when a new version tag is pushed. The workflow is straightforward: push to <code>main</code> and tests run. Push a tag like <code>v0.3.0</code> and tests run, then <code>twine upload</code> publishes to PyPI.</p>
+<p>I set up GitHub Actions to run the test suite on every push and automatically publish to PyPI when a new version tag is pushed. The workflow is straightforward: push to <code>main</code> and tests run. Push a tag like <code>v1.0.6</code> and tests run, then the package publishes to PyPI.</p>
 <p>This means I never manually build or upload. I bump the version in <code>pyproject.toml</code>, tag the commit, and GitHub does the rest. It eliminates the "did I publish the right version?" anxiety that comes with manual publishing.</p>
 <h2>What I Would Do Differently</h2>
 <p><strong>Type hints with stub files.</strong> I have inline type hints, but generating <code>.pyi</code> stub files would make IDE support better for users. Right now, type checkers can infer types from the source, but dedicated stub files are the standard for library packages.</p>
-<p><strong>Async-first design.</strong> I supported both sync and async from the start, but making it async-first with sync wrappers might have been cleaner architecturally. The current approach works, but the dual-path adds internal complexity.</p>
-<p><strong>More granular token claims.</strong> Right now you pass a dict of claims. A <code>TokenClaims</code> dataclass with validation would catch mistakes at creation time instead of at decode time. If you misspell a key in the claims dict, you will not find out until you try to decode the token later.</p>
+<p><strong>Async-first design.</strong> I supported both sync and async from the start. While the cryptographic operations themselves are CPU-bound and naturally synchronous, providing async-compatible interfaces earlier may have reduced friction for async-first frameworks. Making the library async-first with synchronous wrappers might have been cleaner architecturally, but the current approach works well. The dual-path does introduce additional internal complexity.</p>
+<p><strong>More granular token claims.</strong> Right now you pass additional claims as <code>**kwargs</code> to the token creation methods. A <code>TokenClaims</code> dataclass with validation would catch mistakes at creation time instead of at decode time. If you misspell a key in the claims dict, you will not find out until you try to decode the token later.</p>
 <h2>The Takeaway</h2>
 <p>gatevault is not trying to replace Auth0 or a full identity platform. It is for Python apps that need direct, understandable auth primitives without the overhead of a framework-specific solution. If you are building a FastAPI or Flask app and you are tired of wiring JWT, bcrypt, and OAuth2 together for the fifth time, it might save you an afternoon.</p>
 <hr />

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Multi-Tenant Data Isolation at the ORM Layer &bull; Richard Oyelowo</title>
+  <title>How I Prevented Cross-Tenant Data Leaks in a Flask App &bull; Richard Oyelowo</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x2699;</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/base.css">
@@ -17,13 +17,13 @@
 </nav>
 
 <article>
-  <div class="article-meta">2026-07-20</div>
-  <h1 class="article-title">Multi-Tenant Data Isolation at the ORM Layer</h1>
-  <p class="article-summary">How the Business Dashboard enforces per-tenant row-level security. Why controller checks alone are not enough.</p>
+  <div class="article-meta">2025-07-20</div>
+  <h1 class="article-title">How I Prevented Cross-Tenant Data Leaks in a Flask App</h1>
+  <p class="article-summary">How the Business Dashboard enforces per-tenant data isolation at the ORM layer. Why controller checks alone are not enough.</p>
   <div class="article-body">
-<h1>Multi-Tenant Data Isolation at the ORM Layer</h1>
+<h1>How I Prevented Cross-Tenant Data Leaks in a Flask App</h1>
 <h2>The App</h2>
-<p>Business Dashboard is a small business management tool. Something more useful than a spreadsheet but not as heavy as a full CRM. Users sign up, add or import customers, create orders, and see revenue insights from a private dashboard. It is live at businessdashboard.shop.</p>
+<p>Business Dashboard is a small business management tool. Something more useful than a spreadsheet but not as heavy as a full CRM. Users sign up, add customers, create orders, and see revenue insights from a private dashboard. It is live at businessdashboard.shop.</p>
 <p>The core requirement: each user only ever sees their own data. No user can access another user's customers, orders, or revenue numbers. This sounds simple, but getting it right is where most multi-tenant apps fail.</p>
 <h2>Why Controller Checks Are Not Enough</h2>
 <p>The obvious approach is to check the current user at the controller level:</p>
@@ -40,50 +40,69 @@ def list_customers():
 </code></pre>
 
 <p>No tenant filter. It worked fine in development because I was the only user. But in production with multiple users, any authenticated user could type in any order ID and see someone else's data. The fix was straightforward (add the user filter), but the fact that it was possible to forget it told me I needed a more robust approach.</p>
-<h2>The ORM-Level Filter</h2>
-<p>The solution in Business Dashboard was to build a base query pattern that always includes the tenant filter, and to make it the default way to query data:</p>
-<pre class="highlight"><code class="language-python">def get_user_customers(user_id):
-    return Customer.query.filter_by(user_id=user_id).order_by(Customer.created_at.desc()).all()
+<h2>Why ORM-Level Isolation Matters</h2>
+<p>Authentication answers "who is this user?" Authorization answers "what can this user access?"</p>
+<p>In a multi-tenant application, authorization is not just about checking permissions. It is about ensuring every database query is constrained by ownership. A perfectly authenticated request can still leak data if the query behind it is wrong.</p>
+<p>The dangerous cases are usually not the obvious routes. They are the ones added later:</p>
+<ul>
+<li>a new admin page</li>
+<li>a background job</li>
+<li>an export feature</li>
+<li>a reporting query</li>
+</ul>
+<p>The more places that tenant filtering depends on developer memory, the larger the chance of an isolation bug.</p>
+<h2>The Model That Enforced the Pattern</h2>
+<p>The data model ended up being the biggest factor in how isolation works. The <code>Customer</code> model has a <code>user_id</code> foreign key, but <code>Order</code> does not. Orders belong to a customer, and customers belong to a user:</p>
+<pre class="highlight"><code class="language-python">class Customer(db.Model):
+    __tablename__ = 'customer'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey(&quot;users.id&quot;), nullable=False)
+    # ...
+    orders = db.relationship('Order', backref='customer', lazy='dynamic')
 
-def get_user_orders(user_id):
-    return Order.query.filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
+class Order(db.Model):
+    __tablename__ = 'order'
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
+    # no user_id — isolation goes through Customer
 </code></pre>
 
-<p>Every query goes through a service function that takes <code>user_id</code> as a required parameter. There is no "get all customers" or "get order by ID without a user" function. The tenant filter is structurally enforced by the API surface. You literally cannot query data without specifying which user owns it.</p>
-<p>This is a deliberate design choice that trades some flexibility for correctness. If I need an admin function that crosses tenant boundaries, I write a separate function with a different name and explicit admin-only access control. The default path is always tenant-scoped.</p>
-<p>The service layer acts as a barrier between the routes and the database. Routes call service functions, never query the ORM directly. This pattern means a new endpoint cannot accidentally skip the tenant filter because the only way to access data is through the service functions.</p>
-<h2>Delete Protection</h2>
-<p>Another isolation edge case: deletion. Can a user delete a customer that has orders attached? In the Business Dashboard, customers and orders are explicitly linked. Every order belongs to a customer, and both belong to the same user. The delete logic enforces this:</p>
-<ul>
-<li>A customer can only be deleted if they have zero orders</li>
-<li>An order deletion only affects that user's data</li>
-<li>The <code>user_id</code> is checked on every delete operation before the query executes</li>
-</ul>
-<p>This prevents cascade-based data loss and ensures that deleting a customer in User A's dashboard never touches User B's orders, even if a foreign key relationship exists between them. The frontend also reflects this: the delete button is hidden on customers that have orders.</p>
-<h2>CSV and JSON Import with Tenant Scoping</h2>
-<p>The dashboard supports bulk importing customers and orders via CSV or JSON upload. The import service parses the file, validates each row, and inserts records, all scoped to the authenticated user.</p>
-<p>The import flow has its own edge cases worth documenting.</p>
-<p><strong>Duplicate detection.</strong> If an imported customer has the same email as an existing customer for that user, it is skipped (not overwritten). But the same email for a different user is allowed. Tenants are independent. This means two users can both have a customer with email "john@example.com" without any conflict.</p>
-<p><strong>Validation before insertion.</strong> Every row is validated before any inserts happen. If row 47 of a 100-row CSV fails validation, none of the rows are inserted. This prevents partial imports that leave the database in an inconsistent state. The user gets a clear error message about which row failed and why.</p>
-<p><strong>Type coercion.</strong> The import service converts string values from CSV into the correct types (dates, numbers, booleans) before insertion, with clear error messages for malformed data. A CSV cell with "$1,200.50" gets converted to 1200.50 as a float. A cell with "2025-01-15" gets parsed into a date object. If the conversion fails, the import rolls back and reports the error.</p>
-<h2>Revenue Insights from Relational Data</h2>
-<p>The dashboard page calculates metrics from the order data: total revenue, average order value, pending orders, and top customers by revenue. These queries all go through the same tenant-scoped service functions.</p>
-<p>The key insight here is that the metrics are not cached. Every dashboard load runs fresh queries against the database. For a small business tool this is fine. The queries are simple aggregations with a WHERE clause for the user ID, and PostgreSQL handles them in milliseconds. If the dataset grew to millions of orders, I would add materialized views or a caching layer, but for the current scale, direct queries are the right choice.</p>
-<h2>The Architecture in Practice</h2>
-<p>The Business Dashboard uses Flask with SQLAlchemy (sync) and server-rendered HTML with TailwindCSS. There is no JavaScript framework, no API layer, no separate frontend build step. The backend renders templates directly.</p>
-<p>This is an intentional choice for this project. The app is a CRUD dashboard with forms, tables, and charts. A React frontend would add complexity without clear benefit. The server-rendered approach means the tenant filter is applied before any HTML is generated, so there is no risk of client-side code accidentally fetching cross-tenant data. The user's data is determined on the server and the template only renders what the service layer returns.</p>
-<p>The tech stack:
-- <strong>Flask</strong> for the web framework with blueprint modularization
-- <strong>SQLAlchemy</strong> as the ORM with declarative models
-- <strong>Alembic</strong> for database migrations
-- <strong>PostgreSQL</strong> as the relational database, hosted on Render
-- <strong>TailwindCSS</strong> via CDN for utility-first styling</p>
+<p>Because orders lack a direct <code>user_id</code>, every order query must join through <code>Customer</code> to get the tenant. This was not an afterthought. It means the application has one ownership path from an order to a user: through the customer relationship. Every order query must follow that path.</p>
+<p>This is what every order query in the app looks like:</p>
+<pre class="highlight"><code class="language-python">@orders_bp.route(&quot;/&quot;)
+@login_required
+def orders():
+    user = g.user
+    pagination = (
+        Order.query.join(Customer)
+        .filter(Customer.user_id == user.id)
+        .order_by(Order.created.desc())
+        .paginate(page=page, per_page=10, error_out=False)
+    )
+    return render_template(&quot;orders.html&quot;, orders=pagination.items, pagination=pagination)
+</code></pre>
+
+<p>Every route follows this pattern. Edit, delete, list. There is no "get order by ID without a user" endpoint anywhere in the codebase. The customer routes are the same idea but simpler because <code>Customer</code> has <code>user_id</code> directly, so it is just <code>.filter_by(user_id=user.id)</code>.</p>
+<h2>Why Orders Do Not Have user_id</h2>
+<p>One possible design would be adding a user_id column directly to every tenant-owned table. That makes queries simpler:</p>
+<pre class="highlight"><code class="language-python">Order.query.filter_by(user_id=user.id)
+</code></pre>
+
+<p>The tradeoff is duplicated ownership data. Now every order has two relationships to maintain:</p>
+<p>Order -&gt; Customer -&gt; User
+Order -&gt; User</p>
+<p>Those can drift if something goes wrong.</p>
+<p>For this application, an order's ownership is derived from its customer. Keeping one source of ownership truth reduces the number of consistency rules the database has to maintain.</p>
+<p>The downside is that queries require joins. That is a tradeoff I accepted because correctness was more important than the convenience of simpler queries.</p>
+<h2>The Global Email Trade-off</h2>
+<p>One consequence of this model: the <code>Customer.email</code> column has <code>unique=True</code> at the database level. This means no two customers in the entire system can share an email, even if they belong to different users. In a true multi-tenant system you would scope uniqueness to the tenant with a composite constraint on <code>(email, user_id)</code>. For this project the global constraint works because the tool serves small businesses where each customer email is typically unique to one business. But it is a trade-off worth knowing about.</p>
 <h2>What I Would Do Differently</h2>
-<p><strong>Row-level security (RLS) at the database level.</strong> PostgreSQL supports RLS policies that enforce tenant isolation at the query planner level, before the query even executes. This is the gold standard for multi-tenant isolation. For this project, ORM-level filtering was sufficient, but for a production SaaS with multiple developers, I would add RLS as a safety net.</p>
-<p><strong>Soft deletes.</strong> Currently, deleting a customer or order is permanent. In a real business tool, soft deletes (marking records as inactive) would prevent accidental data loss and allow audit trails. The current approach uses hard deletes with a check for existing orders before allowing customer deletion.</p>
-<p><strong>Request-scoped session injection.</strong> Instead of passing <code>user_id</code> to every service function, I would inject it via Flask's <code>g</code> object or a dependency injection pattern. This reduces boilerplate and makes it impossible to forget. Every request already has the authenticated user loaded into the session, so passing it through <code>g</code> would be a small architectural change with a large safety benefit.</p>
+<p><strong>Row-level security at the database level.</strong> PostgreSQL supports RLS policies that enforce tenant isolation at the query planner level, before the query even executes. For this project, ORM-level filtering was sufficient, but for a production SaaS with multiple developers, I would add RLS as a safety net beneath the application layer.</p>
+<p><strong>Per-tenant email uniqueness.</strong> A composite unique constraint on <code>(email, user_id)</code> would let two different users each have a customer with the same email. The current global constraint works for the use case but is not correct for true multi-tenancy.</p>
+<p><strong>Request-scoped query injection.</strong> Right now every route explicitly references <code>g.user.id</code> in each query. A SQLAlchemy event or custom query class that automatically appends the tenant filter would make it structurally impossible to write an unscoped query, rather than relying on developer discipline.</p>
+<p><strong>Soft deletes.</strong> Currently, deleting a customer or order is permanent. Hard deletes with a pre-check for existing orders works, but soft deletes would prevent accidental data loss and allow audit trails.</p>
 <h2>The Takeaway</h2>
-<p>Multi-tenant isolation is not a feature you add. It is a constraint you design around. The question is not "where do I add the user filter?" but "how do I make it impossible to query without one?" In Business Dashboard, the answer was to put the filter at the service layer and never expose unscoped query functions. It is not the most sophisticated approach, but it is correct, auditable, and has no known data leaks.</p>
+<p>Multi-tenant isolation is not a feature you add. It is a constraint you design around. The question is not "where do I add the user filter?" but "how do I make it impossible to query without one?" In Business Dashboard, the answer was to structure the data model so that orders can only be accessed through their owning customer, and to put the filter in every route query. It is not the most sophisticated approach, but it is correct, auditable, and has no known data leaks.</p>
 <hr />
 <p><em>Live at <a href="https://businessdashboard.shop">businessdashboard.shop</a> · Code at <a href="https://github.com/RichardOyelowo/Business-Dashboard">github.com/RichardOyelowo/Business-Dashboard</a></em></p>
   </div>

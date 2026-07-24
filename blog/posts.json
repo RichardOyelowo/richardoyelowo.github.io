@@ -17,17 +17,17 @@
   },
   {
     "slug": "multi-tenant-isolation",
-    "title": "Multi-Tenant Data Isolation at the ORM Layer",
-    "date": "2026-07-20",
-    "summary": "How the Business Dashboard enforces per-tenant row-level security. Why controller checks alone are not enough.",
+    "title": "How I Prevented Cross-Tenant Data Leaks in a Flask App",
+    "date": "2025-07-20",
+    "summary": "How the Business Dashboard enforces per-tenant data isolation at the ORM layer. Why controller checks alone are not enough.",
     "pinned": false,
     "url": "./multi-tenant-isolation.html"
   },
   {
     "slug": "snip-base62",
-    "title": "Collision-Safe URL Shortening with an Atomic Base62 Counter",
-    "date": "2026-07-18",
-    "summary": "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The 4 bugs caught before launch.",
+    "title": "Collision-Free URL Shortening with PostgreSQL Sequences and Base62",
+    "date": "2025-07-01",
+    "summary": "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The flush bug that only appeared under load.",
     "pinned": false,
     "url": "./snip-base62.html"
   }
