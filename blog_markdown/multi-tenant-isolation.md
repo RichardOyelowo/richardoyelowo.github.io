@@ -1,6 +1,6 @@
 ---
 title: "Multi-Tenant Data Isolation at the ORM Layer"
-date: "2025-06-30"
+date: "2026-07-20"
 summary: "How the Business Dashboard enforces per-tenant row-level security. Why controller checks alone are not enough."
 pinned: false
 ---

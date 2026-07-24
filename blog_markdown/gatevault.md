@@ -1,6 +1,6 @@
 ---
 title: "Why I Built gatevault and What Packaging for PyPI Taught Me"
-date: "2025-07-21"
+date: "2026-07-21"
 summary: "Most auth libraries do one thing. I kept solving the same auth problem across projects, so I packaged the solution."
 pinned: true
 ---

@@ -1,6 +1,6 @@
 ---
 title: "Designing RBAC with Independent Org and Team Roles"
-date: "2025-07-20"
+date: "2026-07-23"
 summary: "Clustra's hierarchy: Org, Team, Project, Task. Membership layering, cascade deletes, and centralized permission checks."
 pinned: true
 ---
