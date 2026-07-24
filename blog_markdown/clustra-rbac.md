@@ -57,7 +57,7 @@ def check_team_permission(user, team, action):
     return PERMISSIONS.TEAM[action].get(team_role, False)
 ```
 
-Org admins bypass team membership checks on read-only routes. This means an admin can view any team's projects and tasks without being an explicit team member, which is useful for oversight. But write operations (creating tasks, updating milestones) still require team membership with an appropriate role. This distinction between read and write access for admins was a deliberate choice to give oversight capability without giving unchecked power.
+Org admins bypass team membership checks on read-only routes because Org administrators are responsible for organization-wide oversight. They can read all team resources without joining every team, but must still join a team to perform write operations. This means an admin can view any team's projects and tasks without being an explicit team member, which is useful for oversight. But write operations (creating tasks, updating milestones) still require team membership with an appropriate role. This distinction between read and write access for admins was a deliberate choice to give oversight capability without giving unchecked power.
 
 ## Automatic Team Lead Assignment
 
@@ -71,7 +71,7 @@ Every create, update, and delete in Clustra logs an activity entry. The design d
 
 The wrong approach: commit the activity log entry separately from the main operation. If the main operation succeeds but the log write fails, you have an operation with no audit trail. If the log write succeeds but the main operation fails, you have a phantom activity entry describing something that did not happen.
 
-The correct approach: use `db.flush()` at the point of logging, which sends the INSERT to the database but does not commit, then commit everything together at the end of the service method. This keeps the activity log and the operation it describes in the same transaction. If either fails, both are rolled back.
+The correct approach: use `db.flush()` at the point of logging, which sends the INSERT to the database but does not commit allowing generated IDs to be available for the activity record, then commit everything together at the end of the service method. This keeps the activity log and the operation it describes in the same transaction. If either fails, both are rolled back.
 
 ```python
 async def create_task(session, user, project, task_data):
@@ -105,6 +105,8 @@ Tasks within a project use CASCADE. Deleting a project removes all its tasks. Pr
 
 The SET NULL on user foreign keys was a deliberate choice that differentiates Clustra from systems that aggressively cascade everything. A task should survive user deletion. The alternative, cascading task deletion on user removal, would be destructive in a way that surprises users.
 
+Clustra currently favors hard deletes over soft deletes for these relationships. Since dependent records are removed through explicit database cascade rules where appropriate, referential integrity remains straightforward without requiring every query to account for inactive records.
+
 ## Cross-Tenant Isolation
 
 Every database query in Clustra is constructed with the authenticated user's ID as a hard filter at the ORM level. This is the same principle I used in Business Dashboard, but applied to a more complex hierarchy.
@@ -123,17 +125,19 @@ async def list_tasks(session, user, project_id):
     )
 ```
 
-Controller-level checks alone were considered insufficient. The filter exists at the query level regardless of what the route handler does. A developer adding a new endpoint cannot accidentally expose cross-tenant data because the query itself will not return it. The verification functions are called at the service layer before any data access happens.
+Controller-level checks alone were considered insufficient. The filter exists at the query level regardless of what the route handler does. The service layer enforces membership verification before executing queries, making it much harder for new endpoints to accidentally bypass tenant isolation. The verification functions are called at the service layer before any data access happens.
 
 ## Current Status and Known Items
 
-Clustra is complete and functional. The RBAC system, full CRUD across all models (orgs, teams, projects, tasks, labels, milestones), activity logging, and the vanilla frontend are all built and working. There are two known items from the v1 build that are recognized but not yet addressed:
+Clustra is complete and functional. The RBAC system, full CRUD operations across all models (orgs, teams, projects, tasks, labels, milestones), activity logging, and the vanilla frontend integrations are all built and working. Remaining work is focused on quality-of-life improvements and additional features rather than core authorization functionality. There are two known items from the v1 build that are recognized but not yet addressed:
 
 **Label color field.** The color picker exists in the frontend form and CSS. The Label model does not have a color column yet. A migration is needed to add a `color: Mapped[str]` column with a default value. The frontend already sends the color, but the backend ignores it.
 
 **Org member candidates.** The team add member modal uses a proper dropdown with candidates. The org add member form still takes a user_id manually. An org-level candidates endpoint that returns all system users who are not already org members was considered but not built. This would make the org member addition flow consistent with how team member addition works.
 
 These are recognized gaps, not blockers. The system is functional and deployed.
+
+N.B: Clustra intentionally limits authorization to organization- and team-level roles. Projects do not define their own role hierarchy; instead, permissions flow from organization membership and team membership. Avoiding a third layer of role assignments keeps the authorization model easier to understand and maintain while still supporting the application's current requirements.
 
 ---
 
