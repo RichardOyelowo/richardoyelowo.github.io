@@ -8,6 +8,14 @@
     "url": "./clustra-rbac.html"
   },
   {
+    "slug": "gatevault-reference",
+    "title": "How gatevault Handles Authentication in Python",
+    "date": "2026-07-27",
+    "summary": "Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection.",
+    "pinned": true,
+    "url": "./gatevault-reference.html"
+  },
+  {
     "slug": "gatevault",
     "title": "Why I Built gatevault and What Packaging for PyPI Taught Me",
     "date": "2026-07-21",
@@ -18,7 +26,7 @@
   {
     "slug": "multi-tenant-isolation",
     "title": "How I Prevented Cross-Tenant Data Leaks in a Flask App",
-    "date": "2025-07-20",
+    "date": "2026-07-20",
     "summary": "How the Business Dashboard enforces per-tenant data isolation at the ORM layer. Why controller checks alone are not enough.",
     "pinned": false,
     "url": "./multi-tenant-isolation.html"
@@ -26,7 +34,7 @@
   {
     "slug": "snip-base62",
     "title": "Collision-Free URL Shortening with PostgreSQL Sequences and Base62",
-    "date": "2025-07-01",
+    "date": "2026-07-01",
     "summary": "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The flush bug that only appeared under load.",
     "pinned": false,
     "url": "./snip-base62.html"

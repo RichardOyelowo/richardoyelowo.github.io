@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How gatevault Handles Authentication in Python &bull; Richard Oyelowo</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x2699;</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/post.css">
+</head>
+<body>
+
+<nav class="sub-nav">
+  <a href="../" class="nav-logo">Richard Oyelowo</a>
+  <a href="./" class="nav-back">&larr; All Posts</a>
+</nav>
+
+<article>
+  <div class="article-meta">2026-07-27</div>
+  <h1 class="article-title">How gatevault Handles Authentication in Python</h1>
+  <p class="article-summary">Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection.</p>
+  <div class="article-body">
+<h1>How gatevault Handles Authentication in Python</h1>
+<h2>what gatevault is</h2>
+<p>gatevault is a Python authentication library that provides JWT token management, bcrypt password hashing, OAuth2 password credentials flow, and route protection. It has zero framework dependencies. The only runtime requirements are PyJWT and bcrypt.</p>
+<p>Install:</p>
+<pre class="highlight"><code>pip install richard-gatevault
+</code></pre>
+
+<p>Every public export:</p>
+<pre class="highlight"><code class="language-python">from gatevault import (
+    GateVault,
+    OAuthHandler,
+    TokenManager,
+    UserID,
+    normalize_user_id,
+    hash_password,
+    verify_password,
+    ShortKeyWarning,
+    GatevaultError,
+    TokenError,
+    TokenExpiredError,
+    InvalidTokenError,
+    TokenDecodeError,
+    HashingError,
+    GuardError,
+    InvalidCredentialsError,
+    UnauthorizedError,
+)
+</code></pre>
+
+<hr />
+<h2>Password Hashing</h2>
+<p>Two standalone functions. No class instantiation needed. No configuration. No salt management. bcrypt handles everything.</p>
+<h3>hash_password(plain: str) -&gt; str</h3>
+<p>Takes a plain text string, hashes it with bcrypt, returns the full hash string including the embedded salt.</p>
+<pre class="highlight"><code class="language-python">from gatevault import hash_password
+
+hashed = hash_password(&quot;my_secure_password&quot;)
+# $2b$12$N9qo8...
+</code></pre>
+
+<p>The salt is generated automatically by bcrypt and embedded in the hash string. You store this full string in your database. There is no separate salt column. There is no way to hash without a salt.</p>
+<p>If bcrypt fails internally, it raises a <code>HashingError</code>. This wraps the raw bcrypt exception so callers never need to import bcrypt to handle errors.</p>
+<h3>verify_password(plain: str, hashed: str) -&gt; bool</h3>
+<p>Takes a plain text password and a stored bcrypt hash. Returns <code>True</code> if they match, <code>False</code> if they don't. Does not raise on mismatch.</p>
+<pre class="highlight"><code class="language-python">from gatevault import verify_password
+
+# Correct password
+verify_password(&quot;my_secure_password&quot;, &quot;$2b$12$N9qo8...&quot;)  # True
+
+# Wrong password
+verify_password(&quot;wrong_password&quot;, &quot;$2b$12$N9qo8...&quot;)     # False
+</code></pre>
+
+<p>bcrypt extracts the salt from the stored hash string and uses it to re-hash the input. That is why you only need the hash, not a separate salt.</p>
+<h3>Practical usage</h3>
+<pre class="highlight"><code class="language-python">from gatevault import hash_password, verify_password, HashingError
+
+# During registration
+def register(db, email: str, password: str):
+    if db.find_user_by_email(email):
+        raise ValueError(&quot;Email already registered&quot;)
+
+    try:
+        hashed = hash_password(password)
+    except HashingError:
+        raise ValueError(&quot;Registration failed&quot;)
+
+    user = db.create_user(email=email, password_hash=hashed)
+    return user
+
+# During login
+def login(db, email: str, password: str):
+    user = db.find_user_by_email(email)
+    if not user:
+        raise ValueError(&quot;Invalid credentials&quot;)
+
+    if not verify_password(password, user.password_hash):
+        raise ValueError(&quot;Invalid credentials&quot;)
+
+    return user
+</code></pre>
+
+<hr />
+<h2>Token Management</h2>
+<h3>TokenManager</h3>
+<p>The central class for JWT token creation and verification. Tokens are signed with HS256.</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager
+
+tm = TokenManager(
+    secret_key=&quot;your-very-secure-secret-key-here&quot;,
+    access_expiry_minutes=15,
+    refresh_expiry_days=7
+)
+</code></pre>
+
+<p><strong>Constructor parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secret_key</code></td>
+<td><code>str</code></td>
+<td>Yes</td>
+<td>Secret key for signing tokens. Should be at least 32 bytes.</td>
+</tr>
+<tr>
+<td><code>access_expiry_minutes</code></td>
+<td><code>int</code></td>
+<td>Yes</td>
+<td>How long access tokens live. Typical: 5-60 minutes.</td>
+</tr>
+<tr>
+<td><code>refresh_expiry_days</code></td>
+<td><code>int</code></td>
+<td>Yes</td>
+<td>How long refresh tokens live. Typical: 1-30 days.</td>
+</tr>
+<tr>
+<td><code>user_id_encoder</code></td>
+<td><code>Callable[[object], Union[int, str]]</code></td>
+<td>No</td>
+<td>Custom encoder for user IDs. Defaults to <code>normalize_user_id</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>If <code>secret_key</code> is shorter than 32 bytes, a <code>ShortKeyWarning</code> is emitted. The library does not block you, but you should use a longer key in production. HS256 with a short secret is not secure.</p>
+<h3>User ID types</h3>
+<p>gatevault supports <code>int</code>, <code>str</code>, and <code>UUID</code> out of the box. The <code>normalize_user_id</code> function converts these into an encodable form before the token is created. UUIDs are serialized to strings automatically.</p>
+<pre class="highlight"><code class="language-python">from uuid import UUID
+from gatevault import TokenManager
+
+tm = TokenManager(
+    secret_key=&quot;your-very-secure-secret-key-here&quot;,
+    access_expiry_minutes=15,
+    refresh_expiry_days=7
+)
+
+# All three work without any configuration
+tm.create_access_token(user_id=1)                           # int
+tm.create_access_token(user_id=&quot;user-abc-123&quot;)              # str
+tm.create_access_token(user_id=UUID(&quot;a1b2c3d4-e5f6-...&quot;)) # UUID -&gt; str
+</code></pre>
+
+<p>If your app uses a custom type for user IDs, pass a custom encoder:</p>
+<pre class="highlight"><code class="language-python">def my_encoder(user_id):
+    # Convert your custom type to int or str
+    return str(user_id.mongo_id)
+
+tm = TokenManager(
+    secret_key=SECRET,
+    access_expiry_minutes=15,
+    refresh_expiry_days=7,
+    user_id_encoder=my_encoder
+)
+</code></pre>
+
+<p>The encoder must return an <code>int</code> or <code>str</code>. If it returns something else, <code>TypeError</code> is raised at token creation time.</p>
+<h3>create_access_token(user_id, **kwargs) -&gt; str</h3>
+<p>Creates a short-lived JWT access token.</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+# Minimal
+token = tm.create_access_token(user_id=42)
+# eyJhbGciOiJIUzI1NiIs...
+
+# With extra claims
+token = tm.create_access_token(user_id=42, role=&quot;admin&quot;, org=&quot;acme-corp&quot;)
+</code></pre>
+
+<p>The token payload contains:</p>
+<ul>
+<li><code>user_id</code>: the encoded user ID</li>
+<li><code>exp</code>: expiry timestamp (UTC)</li>
+<li><code>type</code>: always <code>"access"</code></li>
+<li>Any additional claims passed as <code>**kwargs</code></li>
+</ul>
+<h3>create_refresh_token(user_id, **kwargs) -&gt; str</h3>
+<p>Creates a long-lived JWT refresh token. Same interface as <code>create_access_token</code> but the <code>type</code> claim is <code>"refresh"</code> and the expiry uses <code>refresh_expiry_days</code>.</p>
+<pre class="highlight"><code class="language-python">access = tm.create_access_token(user_id=42, role=&quot;admin&quot;)
+refresh = tm.create_refresh_token(user_id=42)
+</code></pre>
+
+<p>You can attach different claims to each token type. A common pattern is minimal claims on the refresh token and rich claims on the access token.</p>
+<h3>decode_token(token: str) -&gt; dict</h3>
+<p>Decodes and verifies a JWT token. Checks the signature and expiry. Returns the decoded payload dictionary.</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError, TokenDecodeError
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+token = tm.create_access_token(user_id=42, role=&quot;admin&quot;)
+
+payload = tm.decode_token(token)
+print(payload[&quot;user_id&quot;])  # 42
+print(payload[&quot;role&quot;])     # admin
+print(payload[&quot;type&quot;])     # access
+print(payload[&quot;exp&quot;])      # 1751347200 (unix timestamp)
+</code></pre>
+
+<p><strong>Exceptions raised:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TokenExpiredError</code></td>
+<td>The token has expired</td>
+</tr>
+<tr>
+<td><code>InvalidTokenError</code></td>
+<td>The token signature is invalid</td>
+</tr>
+<tr>
+<td><code>TokenDecodeError</code></td>
+<td>The token is malformed or cannot be decoded</td>
+</tr>
+</tbody>
+</table>
+<p>These are gatevault's own exceptions. The raw PyJWT exceptions (<code>ExpiredSignatureError</code>, <code>InvalidSignatureError</code>, <code>DecodeError</code>) are caught internally and re-raised as the appropriate gatevault exception. Callers never need to import PyJWT to handle errors.</p>
+<hr />
+<h2>Route Protection</h2>
+<h3>GateVault</h3>
+<p>Wraps a <code>TokenManager</code> into a decorator factory. Any function decorated with <code>@gate.protected</code> will not execute without a valid token. The decoded payload is injected as a <code>payload</code> keyword argument.</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+gate = GateVault(token_manager=tm)
+
+@gate.protected
+def get_profile(payload=None):
+    user_id = payload[&quot;user_id&quot;]
+    return db.get_user(user_id)
+</code></pre>
+
+<h3>How the decorator works</h3>
+<ol>
+<li>The caller passes the token string as the <code>token</code> keyword argument</li>
+<li>The decorator calls <code>tm.decode_token(token)</code></li>
+<li>On success, the decoded payload is injected into the wrapped function as <code>payload</code></li>
+<li>On failure, an exception is raised before the function executes</li>
+</ol>
+<p>The decorator inspects the wrapped function. If it is an async function (<code>inspect.iscoroutinefunction</code>), it returns an async wrapper. If it is sync, it returns a sync wrapper. You do not need to think about this.</p>
+<h3>Sync usage</h3>
+<pre class="highlight"><code class="language-python">@gate.protected
+def get_orders(payload=None):
+    return db.get_orders(payload[&quot;user_id&quot;])
+
+# Call it
+get_orders(token=&quot;eyJhbGci...&quot;)
+</code></pre>
+
+<h3>Async usage</h3>
+<pre class="highlight"><code class="language-python">@gate.protected
+async def get_orders(payload=None):
+    return await db.fetch_orders(payload[&quot;user_id&quot;])
+
+# Call it
+await get_orders(token=&quot;eyJhbGci...&quot;)
+</code></pre>
+
+<h3>Exceptions from the decorator</h3>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GuardError("No token provided")</code></td>
+<td><code>token</code> is <code>None</code> or falsy</td>
+</tr>
+<tr>
+<td><code>GuardError("Unable to decode token")</code></td>
+<td>Token is malformed (<code>TokenDecodeError</code>)</td>
+</tr>
+<tr>
+<td><code>GuardError("Token has expired")</code></td>
+<td>Token has expired (<code>TokenExpiredError</code>)</td>
+</tr>
+<tr>
+<td><code>UnauthorizedError("Invalid token")</code></td>
+<td>Token signature is invalid (<code>InvalidTokenError</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3>FastAPI integration example</h3>
+<p>gatevault does not parse framework-specific request objects. The caller extracts the token from the request and passes it in. This keeps the library framework-free.</p>
+<pre class="highlight"><code class="language-python">from fastapi import FastAPI, Header
+from fastapi.responses import JSONResponse
+from gatevault import TokenManager, GateVault, GuardError, UnauthorizedError
+
+app = FastAPI()
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+gate = GateVault(token_manager=tm)
+
+def get_profile(payload=None):
+    user = db.get_user(payload[&quot;user_id&quot;])
+    return {&quot;id&quot;: user.id, &quot;email&quot;: user.email}
+
+@app.get(&quot;/me&quot;)
+def me(authorization: str = Header(None)):
+    token = authorization.split(&quot; &quot;)[1] if authorization else None
+
+    try:
+        return gate.protected(get_profile)(token=token)
+    except GuardError as e:
+        return JSONResponse(status_code=401, content={&quot;error&quot;: str(e)})
+    except UnauthorizedError:
+        return JSONResponse(status_code=401, content={&quot;error&quot;: &quot;Invalid token&quot;})
+</code></pre>
+
+<h3>Flask integration example</h3>
+<pre class="highlight"><code class="language-python">from flask import Flask, request, jsonify
+from gatevault import TokenManager, GateVault, GuardError, UnauthorizedError
+
+app = Flask(__name__)
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+gate = GateVault(token_manager=tm)
+
+def get_profile(payload=None):
+    user = db.get_user(payload[&quot;user_id&quot;])
+    return {&quot;id&quot;: user.id, &quot;email&quot;: user.email}
+
+@app.route(&quot;/me&quot;)
+def me():
+    auth = request.headers.get(&quot;Authorization&quot;, &quot;&quot;)
+    token = auth.split(&quot; &quot;)[1] if auth.startswith(&quot;Bearer &quot;) else None
+
+    try:
+        return jsonify(gate.protected(get_profile)(token=token))
+    except GuardError as e:
+        return jsonify({&quot;error&quot;: str(e)}), 401
+    except UnauthorizedError:
+        return jsonify({&quot;error&quot;: &quot;Invalid token&quot;}), 401
+</code></pre>
+
+<hr />
+<h2>OAuth2 Password Credentials Flow</h2>
+<h3>OAuthHandler</h3>
+<p>Wires together user lookup, password verification, and token generation into a single call. Follows the OAuth2 Resource Owner Password Credentials flow.</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, OAuthHandler
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
+</code></pre>
+
+<p><strong>Constructor parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>token_manager</code></td>
+<td><code>TokenManager</code></td>
+<td>Yes</td>
+<td>A configured TokenManager instance</td>
+</tr>
+<tr>
+<td><code>get_user</code></td>
+<td><code>Callable</code></td>
+<td>Yes</td>
+<td>A callable that accepts a username string and returns an object with <code>id</code> and <code>hashed_password</code> attributes, or <code>None</code> if not found</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>get_user</code> callable is your integration point. gatevault does not import any ORM or database library. You provide the lookup logic, and gatevault handles password verification and token generation.</p>
+<h3>login(username: str, password: str) -&gt; dict</h3>
+<p>Authenticates a user synchronously and returns a token pair.</p>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, OAuthHandler
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+def get_user_from_db(username: str):
+    return db.execute(
+        &quot;SELECT id, hashed_password FROM users WHERE email = ?&quot;, (username,)
+    ).fetchone()
+
+handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
+tokens = handler.login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
+
+print(tokens)
+# {
+#     &quot;access_token&quot;: &quot;eyJhbGciOiJIUzI1NiIs...&quot;,
+#     &quot;refresh_token&quot;: &quot;eyJhbGciOiJIUzI1NiIs...&quot;,
+#     &quot;token_type&quot;: &quot;bearer&quot;
+# }
+</code></pre>
+
+<h3>async_login(username: str, password: str) -&gt; dict</h3>
+<p>Same as <code>login</code> but awaits <code>get_user</code>. Use this when your lookup function is async.</p>
+<pre class="highlight"><code class="language-python">async def get_user(username: str):
+    result = await db.execute(select(User).where(User.email == username))
+    return result.scalar_one_or_none()
+
+handler = OAuthHandler(token_manager=tm, get_user=get_user)
+tokens = await handler.async_login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
+</code></pre>
+
+<h3>Login flow internals</h3>
+<p>Both <code>login</code> and <code>async_login</code> follow the same steps:</p>
+<ol>
+<li>Call <code>get_user(username)</code> to look up the user</li>
+<li>If no user is found, raise <code>InvalidCredentialsError("no user found")</code></li>
+<li>Call <code>verify_password(password, user.hashed_password)</code></li>
+<li>If the password does not match, raise <code>UnauthorizedError("user password mismatched")</code></li>
+<li>Create an access token and a refresh token from <code>user.id</code></li>
+<li>Return <code>{"access_token": ..., "refresh_token": ..., "token_type": "bearer"}</code></li>
+<li>If token creation fails (e.g. unsupported user ID type), raise <code>GuardError("invalid user id or token_manager error")</code></li>
+</ol>
+<h3>Login error handling</h3>
+<pre class="highlight"><code class="language-python">from gatevault import (
+    OAuthHandler, InvalidCredentialsError,
+    UnauthorizedError, GuardError
+)
+
+handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
+
+try:
+    tokens = handler.login(email, password)
+except InvalidCredentialsError:
+    return {&quot;error&quot;: &quot;No account found with that email&quot;}, 404
+except UnauthorizedError:
+    return {&quot;error&quot;: &quot;Wrong password&quot;}, 401
+except GuardError as e:
+    return {&quot;error&quot;: f&quot;Auth system error: {e}&quot;}, 500
+</code></pre>
+
+<p>Three distinct exceptions for three distinct failures. No ambiguity.</p>
+<hr />
+<h2>Token Refresh</h2>
+<p>gatevault provides the primitives for token refresh but leaves rotation, persistence, and revocation to the consuming application. This is deliberate.</p>
+<p>JWT tokens are stateless by design. Once issued, they cannot be individually revoked without external state. gatevault does not try to solve this. It gives you token creation and decoding. Your application handles the rest.</p>
+<h3>Basic refresh endpoint</h3>
+<pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError
+
+tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+
+def refresh_tokens(refresh_token: str) -&gt; dict:
+    # Decode the refresh token
+    payload = tm.decode_token(refresh_token)
+
+    # Verify it is actually a refresh token
+    if payload[&quot;type&quot;] != &quot;refresh&quot;:
+        raise ValueError(&quot;Expected refresh token&quot;)
+
+    # Issue a new pair
+    new_access = tm.create_access_token(user_id=payload[&quot;user_id&quot;])
+    new_refresh = tm.create_refresh_token(user_id=payload[&quot;user_id&quot;])
+
+    return {
+        &quot;access_token&quot;: new_access,
+        &quot;refresh_token&quot;: new_refresh,
+        &quot;token_type&quot;: &quot;bearer&quot;
+    }
+</code></pre>
+
+<h3>Refresh with rotation</h3>
+<p>If you need family-based rotation (where reusing an old refresh token invalidates the entire token family), you would add external state tracking:</p>
+<pre class="highlight"><code class="language-python">def refresh_tokens_with_rotation(refresh_token: str, db) -&gt; dict:
+    payload = tm.decode_token(refresh_token)
+
+    if payload[&quot;type&quot;] != &quot;refresh&quot;:
+        raise ValueError(&quot;Expected refresh token&quot;)
+
+    # Check if this token has been rotated
+    token_record = db.get_refresh_token(payload[&quot;jti&quot;])
+    if token_record and token_record.rotated:
+        # Reuse detected. Invalidate the entire family.
+        db.invalidate_family(token_record.family_id)
+        raise ValueError(&quot;Token reuse detected. Please re-authenticate.&quot;)
+
+    # Mark current token as rotated
+    db.mark_rotated(payload[&quot;jti&quot;])
+
+    # Issue new pair in the same family
+    new_access = tm.create_access_token(user_id=payload[&quot;user_id&quot;])
+    new_refresh = tm.create_refresh_token(user_id=payload[&quot;user_id&quot;])
+
+    # Store new token with the same family ID
+    db.store_refresh_token(new_refresh, family_id=token_record.family_id)
+
+    return {
+        &quot;access_token&quot;: new_access,
+        &quot;refresh_token&quot;: new_refresh,
+        &quot;token_type&quot;: &quot;bearer&quot;
+    }
+</code></pre>
+
+<p>This is application-level code. gatevault provides <code>create_access_token</code>, <code>create_refresh_token</code>, and <code>decode_token</code>. The rotation logic, persistence, and family tracking are yours to implement based on your requirements.</p>
+<hr />
+<h2>Exception Hierarchy</h2>
+<p>All gatevault exceptions inherit from <code>GatevaultError</code>. You can catch it broadly or handle specific cases.</p>
+<pre class="highlight"><code>GatevaultError                          # Base exception for all gatevault errors
+├── TokenError                          # Base for JWT-related errors
+│   ├── TokenExpiredError               # Token has expired
+│   ├── InvalidTokenError               # Token signature is invalid
+│   └── TokenDecodeError                # Token is malformed or cannot be decoded
+├── HashingError                        # Password hashing failed
+└── GuardError                          # Base for auth guard errors
+    ├── InvalidCredentialsError         # User not found during login
+    └── UnauthorizedError               # Password mismatch or invalid token in guard
+</code></pre>
+
+<p>Internal PyJWT exceptions (<code>ExpiredSignatureError</code>, <code>InvalidSignatureError</code>, <code>DecodeError</code>, <code>InvalidTokenError</code>) are caught inside gatevault and re-raised as the appropriate gatevault exception. Callers never need to import PyJWT.</p>
+<h3>Broad catch</h3>
+<pre class="highlight"><code class="language-python">from gatevault import GatevaultError
+
+try:
+    payload = tm.decode_token(token)
+except GatevaultError as e:
+    return {&quot;error&quot;: str(e)}
+</code></pre>
+
+<h3>Specific catches</h3>
+<pre class="highlight"><code class="language-python">from gatevault import TokenExpiredError, InvalidTokenError, TokenDecodeError
+
+try:
+    payload = tm.decode_token(token)
+except TokenExpiredError:
+    return {&quot;error&quot;: &quot;Token expired&quot;}
+except TokenDecodeError:
+    return {&quot;error&quot;: &quot;Malformed token&quot;}
+except InvalidTokenError:
+    return {&quot;error&quot;: &quot;Invalid signature&quot;}
+</code></pre>
+
+<h3>Login-specific catches</h3>
+<pre class="highlight"><code class="language-python">from gatevault import InvalidCredentialsError, UnauthorizedError, GuardError
+
+try:
+    tokens = handler.login(email, password)
+except InvalidCredentialsError:
+    return {&quot;error&quot;: &quot;No account found&quot;}
+except UnauthorizedError:
+    return {&quot;error&quot;: &quot;Wrong password&quot;}
+except GuardError as e:
+    return {&quot;error&quot;: f&quot;Auth error: {e}&quot;}
+</code></pre>
+
+<hr />
+<h2>ShortKeyWarning</h2>
+<p>A warning class emitted when the <code>TokenManager</code> secret key is shorter than 32 bytes.</p>
+<pre class="highlight"><code class="language-python">import warnings
+from gatevault import TokenManager, ShortKeyWarning
+
+with warnings.catch_warnings(record=True) as w:
+    warnings.simplefilter(&quot;always&quot;)
+    tm = TokenManager(secret_key=&quot;short&quot;, access_expiry_minutes=15, refresh_expiry_days=7)
+    assert len(w) == 1
+    assert issubclass(w[0].category, ShortKeyWarning)
+</code></pre>
+
+<p>This is a warning, not an error. During development a short key is convenient. In production, use at least 32 bytes.</p>
+<hr />
+<h2>UserID Type</h2>
+<p>gatevault exports a <code>UserID</code> type alias for type hints:</p>
+<pre class="highlight"><code class="language-python">from typing import Union
+from uuid import UUID
+
+UserID = Union[int, str, UUID]
+</code></pre>
+
+<p>This is the type that <code>create_access_token</code> and <code>create_refresh_token</code> accept for the <code>user_id</code> parameter. You can use it in your own type hints:</p>
+<pre class="highlight"><code class="language-python">from gatevault import UserID, TokenManager
+
+def create_user_token(tm: TokenManager, user_id: UserID) -&gt; str:
+    return tm.create_access_token(user_id=user_id)
+</code></pre>
+
+<hr />
+<h2>normalize_user_id(user_id: UserID) -&gt; Union[int, str]</h2>
+<p>The default <code>user_id_encoder</code> used by <code>TokenManager</code>. Converts <code>int</code>, <code>str</code>, and <code>UUID</code> values into an encodable form. UUIDs are converted to strings. ints and strings pass through unchanged.</p>
+<pre class="highlight"><code class="language-python">from gatevault import normalize_user_id
+
+normalize_user_id(42)                    # 42 (int)
+normalize_user_id(&quot;user-abc&quot;)            # &quot;user-abc&quot; (str)
+normalize_user_id(UUID(&quot;a1b2c3d4-...&quot;)) # &quot;a1b2c3d4-...&quot; (str)
+
+normalize_user_id([1, 2, 3])  # raises TypeError
+</code></pre>
+
+<p>Raises <code>TypeError</code> if the value is not <code>int</code>, <code>str</code>, or <code>UUID</code>.</p>
+  </div>
+</article>
+
+<footer role="contentinfo">
+  <div class="footer-inner">
+    <span class="footer-text">&copy; 2026 Richard Oyelowo</span>
+    <span class="footer-text">Built by Richard for the love of development</span>
+  </div>
+</footer>
+
+</body>
+</html>

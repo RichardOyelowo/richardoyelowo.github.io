@@ -1,6 +1,7 @@
 {
   "clustra-rbac": "a3684e73540e8e772e0d53bebb794585cb4d82f8064636216ebe689a23bba812",
+  "gatevault-reference": "c1c337b4aa5735007a248317a533eb339a9ec241435943ae06435dcaad970992",
   "gatevault": "bd6382f1e2c8c4a60e92a0c91feec7fecd252a16aa6f196079a0d24bccc2c313",
-  "multi-tenant-isolation": "5ade7e38074146a71e702d338544eecd3e44be4120cffeeb805666bebb09952b",
-  "snip-base62": "aaae49e0479e6647f6f30e4a6436defa980603c8c9db596eb290b6f9dbfe4afe"
+  "multi-tenant-isolation": "61b53c54597ec6fb456867ec1eecd1c4fb4b5121fd4016db1f2700e5ad6dff23",
+  "snip-base62": "0467f99bf80243d93725f5c7502ab5f0b1095e70a5f30dd18a64f369398b4a65"
 }
