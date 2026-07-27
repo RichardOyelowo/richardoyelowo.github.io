@@ -1,6 +1,13 @@
-# gatevault — Complete API Reference
+---
+title: "How gatevault Handles Authentication in Python"
+date: "2026-07-27"
+summary: "Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection."
+pinned: true
+---
 
-## Overview
+# How gatevault Handles Authentication in Python
+
+## what gatevault is
 
 gatevault is a Python authentication library that provides JWT token management, bcrypt password hashing, OAuth2 password credentials flow, and route protection. It has zero framework dependencies. The only runtime requirements are PyJWT and bcrypt.
 
@@ -48,7 +55,7 @@ Takes a plain text string, hashes it with bcrypt, returns the full hash string i
 from gatevault import hash_password
 
 hashed = hash_password("my_secure_password")
-# $2b$12$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
+# $2b$12$N9qo8...
 ```
 
 The salt is generated automatically by bcrypt and embedded in the hash string. You store this full string in your database. There is no separate salt column. There is no way to hash without a salt.

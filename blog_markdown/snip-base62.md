@@ -1,6 +1,6 @@
 ---
 title: "Collision-Free URL Shortening with PostgreSQL Sequences and Base62"
-date: "2025-07-01"
+date: "2026-07-01"
 summary: "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The flush bug that only appeared under load."
 pinned: false
 ---

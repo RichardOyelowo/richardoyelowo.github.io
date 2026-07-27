@@ -1,6 +1,6 @@
 ---
 title: "How I Prevented Cross-Tenant Data Leaks in a Flask App"
-date: "2025-07-20"
+date: "2026-07-20"
 summary: "How the Business Dashboard enforces per-tenant data isolation at the ORM layer. Why controller checks alone are not enough."
 pinned: false
 ---
