@@ -144,34 +144,25 @@ get_orders(token=&quot;eyJhbGci...&quot;)
 <h2>Token Refresh and Rotation</h2>
 <p>The refresh flow was one of the trickier parts to get right. When a user's access token expires, they send their refresh token to get a new token pair. The question is: what happens to the old refresh token?</p>
 <p>A common approach for implementing refresh token rotation is family-based rotation. Each refresh token belongs to a "family" that traces back to the original login. When a refresh token is used, the application generates a new pair and marks the used token as rotated. If someone tries to reuse an already-rotated refresh token, the entire family is invalidated. This catches token theft: if an attacker replays a stolen refresh token after the legitimate user has already used it, the family gets killed and both the attacker and the legitimate user are forced to re-authenticate.</p>
-<p>During development, this exposed a subtle concurrency issue. An early implementation could accept an already-rotated refresh token if called twice in quick succession because the rotation check was not atomic. The fix was to make the rotation check atomic. Refresh token state cannot rely only on the JWT payload because the token itself is immutable after issuance. The application must maintain external state for used tokens or token families, ensuring that concurrent refresh attempts cannot both succeed.</p>
+<p>gatevault now ships the core exchange step for this as <code>OAuthHandler.async_refresh(refresh_token)</code>. It decodes the token, checks that it is actually a refresh token and not an access token in disguise, and issues a new access and refresh pair. Every call rotates, the refresh token you passed in is never handed back out again.</p>
+<p>Building that surfaced a real bug, and it was not the one I expected. JWT signing is deterministic, so two refresh tokens issued for the same user within the same second came out byte-identical, nothing in the payload varied at that resolution. That meant a "rotated" token could sometimes be the exact same string as the one it was supposed to replace. The fix was a <code>jti</code> claim, a random UUID generated at signing time, so no two tokens gatevault creates are ever the same regardless of timing.</p>
+<p>What <code>async_refresh</code> still does not do is track tokens anywhere. If a refresh token gets stolen and replayed after the legitimate user has already rotated past it, gatevault has no way to know that on its own. Catching that is exactly the family-based pattern above, and it needs external state. Refresh token state cannot rely only on the JWT payload because the token itself is immutable after issuance. The application must maintain that state for used tokens or token families, ensuring concurrent refresh attempts cannot both succeed.</p>
 <p>Access tokens are intentionally short-lived. Refresh tokens allow applications to obtain new access tokens without requiring users to authenticate again.</p>
 <p>JWT access tokens are stateless by design, meaning they cannot be individually revoked after issuance without external state.</p>
-<p>gatevault therefore provides the primitives required for refresh token workflows but leaves persistence, rotation, and revocation decisions to the consuming application. The <code>TokenManager</code> gives you token creation and decoding. The refresh endpoint itself is application-level code:</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError
+<p>gatevault therefore gives you a safe rotation primitive but leaves persistence, family tracking, and revocation decisions to the consuming application. <code>OAuthHandler.async_refresh</code> handles the exchange. What you build around it is yours:</p>
+<pre class="highlight"><code class="language-python">from gatevault import OAuthHandler, TokenExpiredError, InvalidTokenError, InvalidCredentialsError
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+handler = OAuthHandler(token_manager=tm, get_user=get_user, get_user_by_id=get_user_by_id)
 
-def refresh_tokens(refresh_token: str) -&gt; dict:
-    payload = tm.decode_token(refresh_token)
-
-    if payload[&quot;type&quot;] != &quot;refresh&quot;:
-        raise ValueError(&quot;Expected refresh token&quot;)
-
-    # Your app handles rotation/revocation here
-    # e.g. check if this token has been rotated already
-
-    new_access = tm.create_access_token(user_id=payload[&quot;user_id&quot;])
-    new_refresh = tm.create_refresh_token(user_id=payload[&quot;user_id&quot;])
-
-    return {
-        &quot;access_token&quot;: new_access,
-        &quot;refresh_token&quot;: new_refresh,
-        &quot;token_type&quot;: &quot;bearer&quot;
-    }
+async def refresh_route(refresh_token: str) -&gt; dict:
+    try:
+        return await handler.async_refresh(refresh_token)
+    except (TokenExpiredError, InvalidTokenError, InvalidCredentialsError):
+        raise ValueError(&quot;Invalid or expired refresh token&quot;)
 </code></pre>
 
-<p>Applications that require token rotation or immediate invalidation can store refresh token identifiers externally and enforce their own lifecycle policies.</p>
+<p><code>get_user_by_id</code> is optional. Pass it if you want a deleted or deactivated account rejected before a new pair goes out. Leave it out and <code>async_refresh</code> trusts the <code>user_id</code> already signed into the token, no extra database call.</p>
+<p>Applications that require reuse detection or immediate invalidation still need to store refresh token identifiers externally and enforce their own family or blocklist policy on top of what <code>async_refresh</code> gives you.</p>
 <h2>What I Learned Packaging for PyPI</h2>
 <h3>pyproject.toml is the Standard Now</h3>
 <p>I started with <code>setup.py</code> out of habit, then moved everything to <code>pyproject.toml</code> with <code>hatchling</code> as the build backend. It is cleaner. Dependencies, build system, metadata, and entry points all live in one file. If you are starting a new package today, skip <code>setup.py</code> entirely.</p>
@@ -184,7 +175,7 @@ packages = [&quot;src/gatevault&quot;]
 
 [project]
 name = &quot;richard-gatevault&quot;
-version = &quot;1.0.6&quot;
+version = &quot;1.1.0&quot;
 requires-python = &quot;&gt;=3.9&quot;
 dependencies = [&quot;PyJWT&quot;, &quot;bcrypt&quot;]
 </code></pre>
@@ -243,12 +234,13 @@ except GuardError as e:
 <li>Password hashing and verification with round-trip guarantees</li>
 <li>The protected decorator in both sync and async contexts</li>
 <li>Exception types for every failure mode</li>
-<li>Token refresh rotation and family-based invalidation</li>
+<li><code>async_refresh</code> rejecting a token of the wrong type, and confirming rotation actually produces a new pair rather than the same tokens back</li>
 </ul>
 <p>The test suite is the most important part of the package. A library with no tests is a liability, not a tool.</p>
 <h3>CI and Automated PyPI Releases</h3>
-<p>I set up GitHub Actions to run the test suite on every push and automatically publish to PyPI when a new version tag is pushed. The workflow is straightforward: push to <code>main</code> and tests run. Push a tag like <code>v1.0.6</code> and tests run, then the package publishes to PyPI.</p>
-<p>This means I never manually build or upload. I bump the version in <code>pyproject.toml</code>, tag the commit, and GitHub does the rest. It eliminates the "did I publish the right version?" anxiety that comes with manual publishing.</p>
+<p>I set up GitHub Actions to run the test suite on every push and automatically publish to PyPI when a new version tag is pushed. The two triggers are separate. Push to <code>main</code>, or open a PR into it, and the test workflow runs. Push a tag like <code>v1.1.0</code> and a second, independent workflow builds the package and publishes it to PyPI, it does not re-run the tests, since a tag only ever gets pushed after <code>main</code> is already green.</p>
+<p>That publish workflow also pulls the matching version section out of <code>CHANGELOG.md</code> and attaches it as the GitHub release notes, so the release description always matches what I actually wrote down rather than something reconstructed from a commit message.</p>
+<p>This means I never manually build or upload. I bump the version in <code>pyproject.toml</code>, merge to <code>main</code>, wait for tests to pass, then tag and push the tag. GitHub does the rest. It eliminates the "did I publish the right version?" anxiety that comes with manual publishing.</p>
 <h2>What I Would Do Differently</h2>
 <p><strong>Type hints with stub files.</strong> I have inline type hints, but generating <code>.pyi</code> stub files would make IDE support better for users. Right now, type checkers can infer types from the source, but dedicated stub files are the standard for library packages.</p>
 <p><strong>Async-first design.</strong> I supported both sync and async from the start. While the cryptographic operations themselves are CPU-bound and naturally synchronous, providing async-compatible interfaces earlier may have reduced friction for async-first frameworks. Making the library async-first with synchronous wrappers might have been cleaner architecturally, but the current approach works well. The dual-path does introduce additional internal complexity.</p>

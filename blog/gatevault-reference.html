@@ -204,6 +204,7 @@ token = tm.create_access_token(user_id=42, role=&quot;admin&quot;, org=&quot;acm
 <li><code>user_id</code>: the encoded user ID</li>
 <li><code>exp</code>: expiry timestamp (UTC)</li>
 <li><code>type</code>: always <code>"access"</code></li>
+<li><code>jti</code>: a random UUID generated at signing time, unique to this token</li>
 <li>Any additional claims passed as <code>**kwargs</code></li>
 </ul>
 <h3>create_refresh_token(user_id, **kwargs) -&gt; str</h3>
@@ -226,8 +227,10 @@ print(payload[&quot;user_id&quot;])  # 42
 print(payload[&quot;role&quot;])     # admin
 print(payload[&quot;type&quot;])     # access
 print(payload[&quot;exp&quot;])      # 1751347200 (unix timestamp)
+print(payload[&quot;jti&quot;])      # 3fa85f64-5717-4562-b3fc-2c963f66afa6
 </code></pre>
 
+<p><code>jti</code> is set automatically on every token, you don't pass it in. It's what keeps two tokens issued in the same second from being byte-identical, since JWT signing is deterministic and without it nothing in the payload would vary at that resolution.</p>
 <p><strong>Exceptions raised:</strong></p>
 <table>
 <thead>
@@ -404,6 +407,12 @@ handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
 <td>Yes</td>
 <td>A callable that accepts a username string and returns an object with <code>id</code> and <code>hashed_password</code> attributes, or <code>None</code> if not found</td>
 </tr>
+<tr>
+<td><code>get_user_by_id</code></td>
+<td><code>Callable</code></td>
+<td>No</td>
+<td>A callable that accepts a user ID and returns the matching user, or <code>None</code>. Used only by <code>async_refresh</code> to confirm the user still exists before handing out a new token pair. Leave it out and <code>async_refresh</code> trusts the <code>user_id</code> already signed into the token.</td>
+</tr>
 </tbody>
 </table>
 <p>The <code>get_user</code> callable is your integration point. gatevault does not import any ORM or database library. You provide the lookup logic, and gatevault handles password verification and token generation.</p>
@@ -439,6 +448,41 @@ handler = OAuthHandler(token_manager=tm, get_user=get_user)
 tokens = await handler.async_login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
 </code></pre>
 
+<h3>async_refresh(refresh_token: str) -&gt; dict</h3>
+<p>Exchanges a valid refresh token for a new access and refresh token pair. Rotates on every call, the refresh token you pass in is never handed back out again.</p>
+<pre class="highlight"><code class="language-python">async def get_user_by_id(user_id):
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+handler = OAuthHandler(token_manager=tm, get_user=get_user, get_user_by_id=get_user_by_id)
+
+tokens = await handler.async_refresh(refresh_token)
+
+print(tokens)
+# {
+#     &quot;access_token&quot;: &quot;eyJhbGci...&quot;,
+#     &quot;refresh_token&quot;: &quot;eyJhbGci...&quot;,
+#     &quot;token_type&quot;: &quot;bearer&quot;
+# }
+</code></pre>
+
+<p>Steps, in order:</p>
+<ol>
+<li>Decode the token. Raises <code>TokenExpiredError</code>, <code>TokenDecodeError</code>, or <code>InvalidTokenError</code> if it's expired, malformed, or tampered with</li>
+<li>Check the <code>type</code> claim. Raises <code>InvalidTokenError</code> if it isn't <code>"refresh"</code>, an access token can never be used here</li>
+<li>If <code>get_user_by_id</code> was passed at setup, look the user up and raise <code>InvalidCredentialsError</code> if they no longer exist</li>
+<li>Issue a fresh access token and a fresh refresh token</li>
+</ol>
+<pre class="highlight"><code class="language-python">from gatevault import TokenExpiredError, TokenDecodeError, InvalidTokenError, InvalidCredentialsError
+
+try:
+    tokens = await handler.async_refresh(refresh_token)
+except (TokenExpiredError, TokenDecodeError, InvalidTokenError, InvalidCredentialsError):
+    return {&quot;error&quot;: &quot;Invalid or expired refresh token&quot;}, 401
+</code></pre>
+
+<p>Collapse all four exceptions to the same generic message and status code. Telling the caller which one it was, expired versus malformed versus a deleted user, hands an attacker probing refresh tokens a way to tell those cases apart.</p>
+<p><code>async_refresh</code> rotates the pair but does not track tokens anywhere. It has no way to know if a refresh token was stolen and is being replayed after the legitimate user already rotated past it. If you need that, see <a href="#refresh-with-rotation">Refresh with rotation</a> below.</p>
 <h3>Login flow internals</h3>
 <p>Both <code>login</code> and <code>async_login</code> follow the same steps:</p>
 <ol>
@@ -471,9 +515,10 @@ except GuardError as e:
 <p>Three distinct exceptions for three distinct failures. No ambiguity.</p>
 <hr />
 <h2>Token Refresh</h2>
-<p>gatevault provides the primitives for token refresh but leaves rotation, persistence, and revocation to the consuming application. This is deliberate.</p>
-<p>JWT tokens are stateless by design. Once issued, they cannot be individually revoked without external state. gatevault does not try to solve this. It gives you token creation and decoding. Your application handles the rest.</p>
+<p><code>OAuthHandler.async_refresh</code> (covered above) handles the core exchange, decode, type check, rotate. What it does not do is track tokens anywhere, so persistence and reuse detection are still left to the consuming application. This is deliberate.</p>
+<p>JWT tokens are stateless by design. Once issued, they cannot be individually revoked without external state. gatevault does not try to solve that part. It gives you a safe rotation primitive, plus the lower-level <code>create_access_token</code>, <code>create_refresh_token</code>, and <code>decode_token</code> if you want to build the exchange yourself. Your application handles persistence and revocation either way.</p>
 <h3>Basic refresh endpoint</h3>
+<p>If you're not using <code>OAuthHandler</code>, or want to see what <code>async_refresh</code> is doing internally, here's the same exchange written directly against <code>TokenManager</code>:</p>
 <pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError
 
 tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
@@ -529,7 +574,7 @@ def refresh_tokens(refresh_token: str) -&gt; dict:
     }
 </code></pre>
 
-<p>This is application-level code. gatevault provides <code>create_access_token</code>, <code>create_refresh_token</code>, and <code>decode_token</code>. The rotation logic, persistence, and family tracking are yours to implement based on your requirements.</p>
+<p>This is application-level code. gatevault provides <code>async_refresh</code> for the base rotation step, plus <code>create_access_token</code>, <code>create_refresh_token</code>, and <code>decode_token</code> if you want to build it yourself. The family tracking, persistence, and reuse detection above are yours to implement based on your requirements.</p>
 <hr />
 <h2>Exception Hierarchy</h2>
 <p>All gatevault exceptions inherit from <code>GatevaultError</code>. You can catch it broadly or handle specific cases.</p>
@@ -540,7 +585,7 @@ def refresh_tokens(refresh_token: str) -&gt; dict:
 │   └── TokenDecodeError                # Token is malformed or cannot be decoded
 ├── HashingError                        # Password hashing failed
 └── GuardError                          # Base for auth guard errors
-    ├── InvalidCredentialsError         # User not found during login
+    ├── InvalidCredentialsError         # User not found during login, or during async_refresh if get_user_by_id is set
     └── UnauthorizedError               # Password mismatch or invalid token in guard
 </code></pre>
 
