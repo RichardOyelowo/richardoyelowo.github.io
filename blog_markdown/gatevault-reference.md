@@ -687,3 +687,4 @@ normalize_user_id([1, 2, 3])  # raises TypeError
 ```
 
 Raises `TypeError` if the value is not `int`, `str`, or `UUID`.
+

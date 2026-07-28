@@ -297,3 +297,4 @@ gatevault is not trying to replace Auth0 or a full identity platform. It is for 
 ---
 
 *If you want to dig into the code or see framework integration examples, the full README covers FastAPI (async and sync), Flask, Django, and Django REST Framework: [github.com/RichardOyelowo/gatevault](https://github.com/RichardOyelowo/gatevault)*
+
