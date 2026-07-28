@@ -57,7 +57,7 @@ article {
 .article-body pre {
   background: #06060a; border: 1px solid var(--border);
   border-left: 2px solid var(--amber-dim); border-radius: 6px;
-  padding: 18px; margin-bottom: 18px; overflow-x: auto; position: relative;
+  padding: 18px; margin-bottom: 18px; overflow-x: hidden; position: relative;
 }
 .article-body pre::before {
   content: ''; position: absolute; top: 0; left: 0;
