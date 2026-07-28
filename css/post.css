@@ -92,6 +92,10 @@ article {
 .article-body td { color: var(--text-mid); }
 .article-body tr:hover td { background: var(--bg3); }
 
+.article-body::-webkit-scrollbar {
+  display: none;             /* Chrome, Safari, Opera */
+}
+
 @media (max-width: 600px) {
   article { padding: 80px var(--page-pad) 32px; }
 }

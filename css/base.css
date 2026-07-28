@@ -29,12 +29,21 @@
 
 /* RESET */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
 html { scroll-behavior: smooth; min-height: 100%; }
+
 body {
   background: var(--bg); color: var(--text);
   font-family: 'DM Mono', monospace; font-weight: 300; line-height: 1.7; overflow-x: hidden;
   display: flex; flex-direction: column; min-height: 100vh;
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
 }
+
+body::-webkit-scrollbar {
+  display: none;             /* Chrome, Safari, Opera */
+}
+
 main { flex: 1; }
 img, video, svg { max-width: 100%; display: block; }
 
