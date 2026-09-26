@@ -17,9 +17,9 @@
   },
   {
     "slug": "sparhttp",
-    "title": "Why I Built SparHTTP and What Writing a Server in C Taught Me",
+    "title": "Building SparHTTP: An HTTP Server From Raw Sockets in C",
     "date": "2026-09-25",
-    "summary": "High-level frameworks hide the network. I wanted to see exactly what happens when a request hits a server, so I built one from scratch in C.",
+    "summary": "Raw sockets, byte-stream parsing with strchr and memcpy, and the two real bugs that came from modifying a buffer while still reading from it.",
     "pinned": false,
     "url": "./sparhttp.html"
   },

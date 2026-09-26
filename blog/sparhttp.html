@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Why I Built SparHTTP and What Writing a Server in C Taught Me &bull; Richard Oyelowo</title>
+  <title>Building SparHTTP: An HTTP Server From Raw Sockets in C &bull; Richard Oyelowo</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x2699;</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/base.css">
@@ -18,34 +18,27 @@
 
 <article>
   <div class="article-meta">2026-09-25</div>
-  <h1 class="article-title">Why I Built SparHTTP and What Writing a Server in C Taught Me</h1>
-  <p class="article-summary">High-level frameworks hide the network. I wanted to see exactly what happens when a request hits a server, so I built one from scratch in C.</p>
+  <h1 class="article-title">Building SparHTTP: An HTTP Server From Raw Sockets in C</h1>
+  <p class="article-summary">Raw sockets, byte-stream parsing with strchr and memcpy, and the two real bugs that came from modifying a buffer while still reading from it.</p>
   <div class="article-body">
-<h1>Why I Built SparHTTP and What Writing a Server in C Taught Me</h1>
-<h2>The Problem I Kept Solving</h2>
-<p>I write Python for my production APIs, but my foundation is in C from Harvard's CS50. When you use FastAPI or Flask, the framework hides the network completely. You never see the socket. You never read the raw bytes. You never write the HTTP formatting yourself. I kept wondering what actually happens at the boundary when a client connects and sends a request. I wanted to strip away the abstractions and build an HTTP server from scratch. That project became SparHTTP.</p>
-<h2>What SparHTTP Actually Does</h2>
-<p>SparHTTP is a lightweight HTTP server written in pure C. It opens a raw TCP socket, binds it to a local port, and listens for a connection. When a client connects, it reads the request off the wire, parses the request line and the headers, builds a fixed response, and sends it back. Right now it handles one client per run and exits after that. This is the first server in a series I'm planning to build across a few languages, so the goal here was to get the raw mechanics right in C before moving on to anything else.</p>
-<h2>Design Decisions</h2>
-<p>SparHTTP uses zero dependencies, just the C standard library and POSIX networking headers. There's no malloc anywhere. Every buffer, the read buffer, the header array, the request line struct, is a fixed size and lives on the stack.</p>
-<p>It handles:</p>
+<h1>Building SparHTTP: An HTTP Server From Raw Sockets in C</h1>
+<h2>What SparHTTP Is</h2>
+<p>SparHTTP is a from-scratch HTTP server written in C. No framework, no parsing library, no <code>malloc</code>. It opens a raw TCP socket, accepts one client, reads the request off the wire, parses the request line and headers by hand, and sends back a fixed <code>200 OK</code>. It's blocking and single-connection: it handles one client, then exits.</p>
+<p>The goal wasn't a server that could run in production. It was to see every layer between a socket and an HTTP response, the layers a framework like Flask or FastAPI normally hides. This post covers how the three files split responsibility, the two real bugs I hit while parsing and serializing, and what the server still doesn't do.</p>
+<h2>Three Files, Three Responsibilities</h2>
 <ul>
-<li>Socket creation, binding, and listening</li>
-<li>Reading the raw request off the socket</li>
-<li>Parsing the request line into method, path, and version</li>
-<li>Parsing headers into a name and value array</li>
-<li>Building and sending back a response</li>
+<li><code>server.c</code> / <code>server.h</code> — socket, bind, listen, accept</li>
+<li><code>http.c</code> / <code>http.h</code> — receive, parse, build, serialize</li>
+<li><code>main.c</code> — wires the two together and prints what it parsed on the way through</li>
 </ul>
-<p>It does not handle yet:</p>
-<ul>
-<li>More than one client per run</li>
-<li>Routing by method or path (every request gets the same 200 OK)</li>
-<li>Malformed or missing input</li>
-<li>Thread pools or an event loop</li>
-</ul>
-<h2>The Code I Wanted to Write</h2>
-<p>Here's how the server gets created and how it accepts a client, from <code>server.c</code>:</p>
-<pre class="highlight"><code class="language-c">int create_server() {
+<p><code>server.c</code> has no idea what an HTTP header is. <code>http.c</code> has no idea a TCP connection exists. Neither file needs to know how the other one works, which made each piece easy to test and reason about on its own.</p>
+<h2>Opening, Binding, and Listening</h2>
+<p>Socket setup is hardcoded, not configurable: <code>127.0.0.1:41783</code>, backlog of 10.</p>
+<pre class="highlight"><code class="language-c">#define PORT 41783
+#define ADDRESS &quot;127.0.0.1&quot;
+#define BACKLOG 10
+
+int create_server() {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in server_address;
     socklen_t address_length = sizeof(server_address);
@@ -65,19 +58,38 @@
 
     return server_socket;
 }
+</code></pre>
 
-int accept_client(int server_socket) {
+<p><code>SO_REUSEADDR</code> is there because restarting the server right after a test run made <code>bind()</code> fail, the previous socket was still sitting in <code>TIME_WAIT</code>. Without it, every restart during development meant waiting it out or changing the port.</p>
+<p>Accepting a client is a separate function, and it returns a different socket than the one passed in:</p>
+<pre class="highlight"><code class="language-c">int accept_client(int server_socket) {
     struct sockaddr_in client_address;
     socklen_t address_length = sizeof(client_address);
     return accept(server_socket, (struct sockaddr *)&amp;client_address, &amp;address_length);
 }
 </code></pre>
 
-<p>And here's the actual parsing from <code>http.c</code>. It walks the buffer with a <code>current</code> pointer and cuts each line at <code>\r</code>:</p>
-<pre class="highlight"><code class="language-c">while (current[0] != '\r' || current[1] != '\n') {
+<p><code>server_socket</code> is the listening socket. The value <code>accept()</code> returns is the socket for that one connected client. <code>client_address</code> isn't an input, <code>accept()</code> writes into it once a connection actually lands.</p>
+<h2>Receiving the Request</h2>
+<pre class="highlight"><code class="language-c">ssize_t receive_request(int client_socket, char *buffer, size_t buffer_size) {
+    ssize_t nread = recv(client_socket, buffer, buffer_size - 1, 0);
+    if (nread &lt; 0) {
+        perror(&quot;recv&quot;);
+    } else {
+        buffer[nread] = '\0';
+    }
+    return nread;
+}
+</code></pre>
+
+<p><code>buffer_size - 1</code> leaves one byte free so the buffer can be null-terminated after the read, which is what makes it safe to run <code>strchr()</code> or <code>printf("%s", buffer)</code> on it afterward. <code>recv()</code> itself has no concept of HTTP: it doesn't know where headers end, what <code>Content-Length</code> means, or whether the request even arrived in one piece. A single call isn't guaranteed to return the whole request, a large enough request can legitimately arrive across multiple <code>recv()</code> calls. SparHTTP currently reads once and assumes it got everything, which is fine for a small request over localhost and wrong in general.</p>
+<h2>Parsing the Request</h2>
+<p>The parser walks the buffer with one pointer instead of copying substrings around, cutting each line at <code>\r</code> and null-terminating it in place:</p>
+<pre class="highlight"><code class="language-c">char *current = buffer;
+
+while (current[0] != '\r' || current[1] != '\n') {
     char *end = strchr(current, '\r');
-    if (end == NULL)
-        break;
+    if (end == NULL) break;
     *end = '\0';
 
     if (line_count == 0) {
@@ -86,22 +98,68 @@ int accept_client(int server_socket) {
         memcpy(request_line-&gt;method, current, method_len);
         request_line-&gt;method[method_len] = '\0';
         current = first_space + 1;
-        // path and version get pulled out the same way
+        // path and version get pulled out the same way, then current = end + 2
+    } else {
+        char *colon = strchr(current, ':');
+        if (colon == NULL) break;
+        size_t header_len = colon - current;
+        memcpy(header[header_count].name, current, header_len);
+        header[header_count].name[header_len] = '\0';
+        current = colon + 2;
+        // value gets copied the same way, up to `end`
     }
 }
 </code></pre>
 
-<p>The first line parsed is the request line, method, path, version. Every line after that gets read as a <code>Name: value</code> header, until the code hits the blank line marking the end of the headers.</p>
-<h2>The Bug I Haven't Fixed Yet</h2>
-<p>This code doesn't validate malformed input, and I found the gap while testing it by hand. If a client sends a request line with no spaces in it, <code>strchr(current, ' ')</code> returns NULL. The next line, <code>method_len = first_space - current</code>, does pointer arithmetic on that null pointer. That's undefined behavior, and in practice it crashes the process. In Python you'd get a clean exception and a traceback. In C you get a dead process and have to go dig for the cause yourself.</p>
-<p>I know where the fix goes, a null check right after each <code>strchr</code> call, before touching the result. I just haven't written it yet. It's next on the list.</p>
-<h2>What I Would Do Differently</h2>
-<p>Handle more than one client. Right now the server accepts a single connection and exits. A real server needs a loop, or better, an event-driven model using epoll on Linux or kqueue on Mac, so one process can manage many connections without blocking on each one.</p>
-<p>Add real routing. Every request gets the same 200 OK response right now, regardless of method or path. A GET to <code>/health</code> and a POST to <code>/users</code> get identical treatment. Routing by method and path is the next piece.</p>
-<p>Validate the input. As above, the parser currently trusts whatever the client sends. That's the fastest way to turn one malformed request into a crash.</p>
-<h2>The Takeaway</h2>
-<p>SparHTTP won't replace Nginx or handle production traffic, and that was never the plan. Writing it taught me how sockets work, how HTTP text is structured on the wire, and how much a language like C leaves for you to check yourself. If you want to see what your framework hides, building a server from scratch is the fastest way to find out.</p>
-<p>Code's here if you want to look through it or build it yourself: github.com/RichardOyelowo/SparHTTP</p>
+<p>The first line is method, path, version, split on the two spaces. Every line after that is a header, split on the colon, until the loop hits the blank line separating headers from the body. Whatever's left in the buffer at that point becomes the body; there's no <code>Content-Length</code> check bounding it yet, it's just "whatever remains."</p>
+<p><code>strchr</code> returns a pointer to the character it finds, so subtracting two pointers gives the exact byte count between them, that's where <code>method_len = first_space - current</code> comes from. <code>memcpy</code> only copies bytes, it doesn't know anything about C strings, so every copied field gets a manually written <code>'\0'</code> right after.</p>
+<p><strong>The bug this shape of code invites:</strong> each line gets null-terminated in place by writing <code>'\0'</code> over the <code>\r</code>. If you then go looking for that same <code>\r</code> again with a fresh <code>strchr()</code> call instead of reusing the <code>end</code> pointer you already have, you won't find it, you already overwrote it. The result isn't a clean crash, it's a bad length calculation from subtracting against whatever <code>strchr</code> finds next, which can be well past the intended field. The fix is exactly what the code above does: compute <code>end</code> once per line, and reuse that same pointer for every length calculation on that line instead of re-deriving it.</p>
+<h2>Building and Serializing the Response</h2>
+<p>Response construction and response serialization are two separate functions. <code>build_response()</code> decides what the response is:</p>
+<pre class="highlight"><code class="language-c">void build_response(Response *response) {
+    strcpy(response-&gt;status, &quot;200 OK&quot;);
+    strcpy(response-&gt;body, &quot;Connection Successful\n&quot;);
+    strcpy(response-&gt;header[0].name, &quot;Server&quot;);
+    strcpy(response-&gt;header[0].value, &quot;SparHTTP&quot;);
+    response-&gt;header_count = 2; // plus Content-Type, set the same way
+}
+</code></pre>
+
+<p><code>serialize_response()</code> decides how that struct becomes actual bytes, <code>HTTP/1.1 200 OK\r\n...</code>, using <code>snprintf</code> to track how much buffer space is left after every write:</p>
+<pre class="highlight"><code class="language-c">int serialize_response(Response *response, char *buffer, size_t buffer_size) {
+    int written = 0;
+    written += snprintf(buffer + written, buffer_size - written,
+        &quot;HTTP/1.1 %s\r\n&quot;, response-&gt;status);
+    // headers loop the same way, then a final snprintf appends &quot;\r\n%s&quot; for the body
+    return written;
+}
+</code></pre>
+
+<p><code>main.c</code> never touches HTTP syntax directly, it just calls both functions in order.</p>
+<p><strong>The bug that shaped <code>serialize_response</code>'s signature:</strong> an earlier version only took <code>char *buffer</code> as a parameter and used <code>sizeof(buffer)</code> inside the function to work out how much room was left. Inside a function, <code>buffer</code> is a pointer, not the caller's array, so <code>sizeof(buffer)</code> returns the size of the pointer (8 bytes on a 64-bit system), not the actual buffer capacity. The fix is the <code>buffer_size</code> parameter above, passed explicitly by the caller, combined with <code>snprintf</code>'s return value to track exactly how much space is left after every write.</p>
+<p>There's no <code>malloc</code> anywhere in this path. The response is small and its shape is known ahead of time, so a fixed stack buffer covers it without adding a dynamic-memory problem the project doesn't need yet.</p>
+<h2>Why It Only Answers Once</h2>
+<pre class="highlight"><code class="language-c">int client_socket = accept_client(create_server());
+receive_request(client_socket, buffer, sizeof(buffer));
+parse_request(buffer, &amp;http_request, header, &amp;client_msg);
+build_response(&amp;response);
+send(client_socket, servers_response, serialize_response(&amp;response, servers_response, sizeof(servers_response)), 0);
+return 0;
+</code></pre>
+
+<p>That's the entire flow in <code>main.c</code>, and it runs once. There's no loop around <code>accept_client()</code>, so the process handles exactly one connection and exits. Curl it once, get a response; curl it again, "Empty reply from server," because the process is already gone. That's the current boundary, not an oversight: the request/response path needed to be solid before adding a loop and, eventually, real concurrency on top of it.</p>
+<h2>Current Status and Known Items</h2>
+<p>SparHTTP correctly opens a socket, accepts a connection, parses a request line and headers with no external parsing library, and serializes a response back out, all with zero dynamic allocation. The following are known gaps, not bugs:</p>
+<ul>
+<li><strong>Single client per run.</strong> No loop around <code>accept()</code>, the process exits after one request.</li>
+<li><strong>No routing.</strong> Every request gets the same <code>200 OK</code>, regardless of method or path.</li>
+<li><strong>No input validation.</strong> A malformed request (missing spaces, missing colons) isn't rejected; the parser assumes well-formed input.</li>
+<li><strong>No <code>Content-Length</code> handling.</strong> The body is whatever bytes remain in the buffer after headers, not a length-bounded read.</li>
+<li><strong>No partial I/O handling.</strong> Both <code>recv()</code> and <code>send()</code> are treated as single-call operations that always complete in full.</li>
+</ul>
+<p>None of these are things I missed, they're the difference between a server built to learn the underlying mechanics and one built to actually serve traffic. The next version in this series moves to <code>epoll</code> or <code>kqueue</code> and a real accept loop.</p>
+<hr />
+<p><em>Code at <a href="https://github.com/RichardOyelowo/sparhttp">github.com/RichardOyelowo/sparhttp</a></em></p>
   </div>
 </article>
 
