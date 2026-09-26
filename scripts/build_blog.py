@@ -17,7 +17,7 @@ Usage:
     python scripts/build_blog.py
 
 Requirements:
-    pip install markdown
+    pip install markdown pygments
 """
 
 import os
@@ -227,17 +227,12 @@ def main():
         })
         generated_slugs.add(slug)
 
-    # Sort: pinned first (max 3, most recent pinned wins), then everyone else by date descending
-    pinned_all = [p for p in posts_meta if p.get("pinned")]
-    pinned_all.sort(key=lambda p: p.get("date", ""), reverse=True)
-
-    pinned_posts = pinned_all[:3]
-    overflow_pinned = pinned_all[3:]  # still real posts, just no longer featured
-
-    unpinned_posts = [p for p in posts_meta if not p.get("pinned")] + overflow_pinned
+    # Sort: pinned first (max 3), then by date descending
+    pinned_posts = [p for p in posts_meta if p.get("pinned")][:3]
+    unpinned_posts = [p for p in posts_meta if not p.get("pinned")]
     unpinned_posts.sort(key=lambda p: p.get("date", ""), reverse=True)
-
     sorted_posts = pinned_posts + unpinned_posts
+
     # Write posts.json
     json_content = json.dumps(sorted_posts, indent=2, ensure_ascii=False)
     POSTS_JSON.write_text(json_content, encoding="utf-8")
@@ -264,10 +259,10 @@ def main():
     save_hashes(new_hashes)
 
     print(f"\nDone! {len(sorted_posts)} post(s) built.")
-    print(f"Workflow:")
-    print(f"  1. Add a new .md file to blog_markdown/")
-    print(f"  2. Run: python scripts/build_blog.py")
-    print(f"  3. Commit and push")
+    print("Workflow:")
+    print("  1. Add a new .md file to blog_markdown/")
+    print("  2. Run: python scripts/build_blog.py")
+    print("  3. Commit and push")
 
 
 if __name__ == "__main__":

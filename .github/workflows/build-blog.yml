@@ -29,7 +29,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install markdown --break-system-packages
+        run: pip install markdown pygments --break-system-packages
 
       - name: Generate blog
         run: python scripts/build_blog.py
@@ -68,4 +68,3 @@ jobs:
       - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
