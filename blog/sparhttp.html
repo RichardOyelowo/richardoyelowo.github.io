@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why I Built SparHTTP and What Writing a Server in C Taught Me &bull; Richard Oyelowo</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x2699;</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/post.css">
+</head>
+<body>
+
+<nav class="sub-nav">
+  <a href="../" class="nav-logo">Richard Oyelowo</a>
+  <a href="./" class="nav-back">&larr; All Posts</a>
+</nav>
+
+<article>
+  <div class="article-meta">2024-09-25</div>
+  <h1 class="article-title">Why I Built SparHTTP and What Writing a Server in C Taught Me</h1>
+  <p class="article-summary">High-level frameworks hide the network. I wanted to see exactly what happens when a request hits a server, so I built one from scratch in C.</p>
+  <div class="article-body">
+<h1>Why I Built SparHTTP and What Writing a Server in C Taught Me</h1>
+<h2>The Problem I Kept Solving</h2>
+<p>I write Python for my production APIs, but my foundation is in C from Harvard's CS50. When you use FastAPI or Flask, the framework hides the network completely. You never see the socket. You never read the raw bytes. You never write the HTTP formatting yourself. I kept wondering what actually happens at the boundary when a client connects and sends a request. I wanted to strip away the abstractions and build an HTTP server from scratch. That project became SparHTTP.</p>
+<h2>What SparHTTP Actually Does</h2>
+<p>SparHTTP is a lightweight HTTP server written in pure C. It opens a raw TCP socket, binds it to a local port, and listens for a connection. When a client connects, it reads the request off the wire, parses the request line and the headers, builds a fixed response, and sends it back. Right now it handles one client per run and exits after that. This is the first server in a series I'm planning to build across a few languages, so the goal here was to get the raw mechanics right in C before moving on to anything else.</p>
+<h2>Design Decisions</h2>
+<p>SparHTTP uses zero dependencies, just the C standard library and POSIX networking headers. There's no malloc anywhere. Every buffer, the read buffer, the header array, the request line struct, is a fixed size and lives on the stack.</p>
+<p>It handles:</p>
+<ul>
+<li>Socket creation, binding, and listening</li>
+<li>Reading the raw request off the socket</li>
+<li>Parsing the request line into method, path, and version</li>
+<li>Parsing headers into a name and value array</li>
+<li>Building and sending back a response</li>
+</ul>
+<p>It does not handle yet:</p>
+<ul>
+<li>More than one client per run</li>
+<li>Routing by method or path (every request gets the same 200 OK)</li>
+<li>Malformed or missing input</li>
+<li>Thread pools or an event loop</li>
+</ul>
+<h2>The Code I Wanted to Write</h2>
+<p>Here's how the server gets created and how it accepts a client, from <code>server.c</code>:</p>
+<pre class="highlight"><code class="language-c">int create_server() {
+    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in server_address;
+    socklen_t address_length = sizeof(server_address);
+
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(PORT);
+    inet_pton(AF_INET, ADDRESS, &amp;server_address.sin_addr);
+
+    int reuse = 1;
+    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &amp;reuse, sizeof(reuse));
+
+    if (bind(server_socket, (struct sockaddr *)&amp;server_address, address_length) &lt; 0)
+        printf(&quot;Binding Error Occurred\n&quot;);
+
+    if (listen(server_socket, BACKLOG) &lt; 0)
+        printf(&quot;Listen Error Occurred\n&quot;);
+
+    return server_socket;
+}
+
+int accept_client(int server_socket) {
+    struct sockaddr_in client_address;
+    socklen_t address_length = sizeof(client_address);
+    return accept(server_socket, (struct sockaddr *)&amp;client_address, &amp;address_length);
+}
+</code></pre>
+
+<p>And here's the actual parsing from <code>http.c</code>. It walks the buffer with a <code>current</code> pointer and cuts each line at <code>\r</code>:</p>
+<pre class="highlight"><code class="language-c">while (current[0] != '\r' || current[1] != '\n') {
+    char *end = strchr(current, '\r');
+    if (end == NULL)
+        break;
+    *end = '\0';
+
+    if (line_count == 0) {
+        char *first_space = strchr(current, ' ');
+        size_t method_len = first_space - current;
+        memcpy(request_line-&gt;method, current, method_len);
+        request_line-&gt;method[method_len] = '\0';
+        current = first_space + 1;
+        // path and version get pulled out the same way
+    }
+}
+</code></pre>
+
+<p>The first line parsed is the request line, method, path, version. Every line after that gets read as a <code>Name: value</code> header, until the code hits the blank line marking the end of the headers.</p>
+<h2>The Bug I Haven't Fixed Yet</h2>
+<p>This code doesn't validate malformed input, and I found the gap while testing it by hand. If a client sends a request line with no spaces in it, <code>strchr(current, ' ')</code> returns NULL. The next line, <code>method_len = first_space - current</code>, does pointer arithmetic on that null pointer. That's undefined behavior, and in practice it crashes the process. In Python you'd get a clean exception and a traceback. In C you get a dead process and have to go dig for the cause yourself.</p>
+<p>I know where the fix goes, a null check right after each <code>strchr</code> call, before touching the result. I just haven't written it yet. It's next on the list.</p>
+<h2>What I Would Do Differently</h2>
+<p>Handle more than one client. Right now the server accepts a single connection and exits. A real server needs a loop, or better, an event-driven model using epoll on Linux or kqueue on Mac, so one process can manage many connections without blocking on each one.</p>
+<p>Add real routing. Every request gets the same 200 OK response right now, regardless of method or path. A GET to <code>/health</code> and a POST to <code>/users</code> get identical treatment. Routing by method and path is the next piece.</p>
+<p>Validate the input. As above, the parser currently trusts whatever the client sends. That's the fastest way to turn one malformed request into a crash.</p>
+<h2>The Takeaway</h2>
+<p>SparHTTP won't replace Nginx or handle production traffic, and that was never the plan. Writing it taught me how sockets work, how HTTP text is structured on the wire, and how much a language like C leaves for you to check yourself. If you want to see what your framework hides, building a server from scratch is the fastest way to find out.</p>
+<p>Code's here if you want to look through it or build it yourself: github.com/RichardOyelowo/SparHTTP</p>
+  </div>
+</article>
+
+<footer role="contentinfo">
+  <div class="footer-inner">
+    <span class="footer-text">&copy; 2026 Richard Oyelowo</span>
+    <span class="footer-text">Built by Richard for the love of development</span>
+  </div>
+</footer>
+
+</body>
+</html>
