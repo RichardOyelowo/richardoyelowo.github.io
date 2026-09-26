@@ -1,6 +1,6 @@
 ---
 title: "Why I Built SparHTTP and What Writing a Server in C Taught Me"
-date: "2024-09-25"
+date: "2026-09-25"
 summary: "High-level frameworks hide the network. I wanted to see exactly what happens when a request hits a server, so I built one from scratch in C."
 pinned: false
 ---

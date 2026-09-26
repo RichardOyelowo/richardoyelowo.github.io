@@ -227,12 +227,17 @@ def main():
         })
         generated_slugs.add(slug)
 
-    # Sort: pinned first (max 3), then by date descending
-    pinned_posts = [p for p in posts_meta if p.get("pinned")][:3]
-    unpinned_posts = [p for p in posts_meta if not p.get("pinned")]
-    unpinned_posts.sort(key=lambda p: p.get("date", ""), reverse=True)
-    sorted_posts = pinned_posts + unpinned_posts
+    # Sort: pinned first (max 3, most recent pinned wins), then everyone else by date descending
+    pinned_all = [p for p in posts_meta if p.get("pinned")]
+    pinned_all.sort(key=lambda p: p.get("date", ""), reverse=True)
 
+    pinned_posts = pinned_all[:3]
+    overflow_pinned = pinned_all[3:]  # still real posts, just no longer featured
+
+    unpinned_posts = [p for p in posts_meta if not p.get("pinned")] + overflow_pinned
+    unpinned_posts.sort(key=lambda p: p.get("date", ""), reverse=True)
+
+    sorted_posts = pinned_posts + unpinned_posts
     # Write posts.json
     json_content = json.dumps(sorted_posts, indent=2, ensure_ascii=False)
     POSTS_JSON.write_text(json_content, encoding="utf-8")
@@ -244,7 +249,7 @@ def main():
         cards_html += generate_listing_card(post)
     listing_html = LISTING_TEMPLATE.replace("{{POST_CARDS}}", cards_html)
     INDEX_FILE.write_text(listing_html, encoding="utf-8")
-    print(f"  Generated: index.html (listing page)")
+    print(f"  Generated: index.html (listing page, {len(sorted_posts)} posts)")
 
     # Clean up orphaned HTML files
     for html_file in sorted(BLOG_DIR.glob("*.html")):
