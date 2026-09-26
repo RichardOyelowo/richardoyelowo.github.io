@@ -1,19 +1,19 @@
 [
   {
-    "slug": "gatevault-reference",
-    "title": "How gatevault Handles Authentication in Python",
-    "date": "2026-07-27",
-    "summary": "Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection.",
-    "pinned": true,
-    "url": "./gatevault-reference.html"
-  },
-  {
     "slug": "clustra-rbac",
     "title": "Designing RBAC with Independent Org and Team Roles",
     "date": "2026-07-23",
     "summary": "Clustra's hierarchy: Org, Team, Project, Task. Membership layering, cascade deletes, and centralized permission checks.",
     "pinned": true,
     "url": "./clustra-rbac.html"
+  },
+  {
+    "slug": "gatevault-reference",
+    "title": "How gatevault Handles Authentication in Python",
+    "date": "2026-07-27",
+    "summary": "Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection.",
+    "pinned": true,
+    "url": "./gatevault-reference.html"
   },
   {
     "slug": "sparhttp",
