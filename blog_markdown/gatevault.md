@@ -4,9 +4,6 @@ date: "2026-07-21"
 summary: "Most auth libraries do one thing. I kept solving the same auth problem across projects, so I packaged the solution."
 pinned: false
 ---
-
-# Why I Built gatevault and What Packaging for PyPI Taught Me
-
 ## The Problem I Kept Solving
 
 Every backend project needs auth. Hash a password, verify credentials, create access and refresh tokens, protect routes, decode token payloads, raise useful errors. I was writing these same patterns in every project. FastAPI apps, Flask apps, scripts that needed OAuth2. Each time I would grab PyJWT for encoding, bcrypt for hashing, and then wire the whole flow together myself.

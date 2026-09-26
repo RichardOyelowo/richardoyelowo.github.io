@@ -4,9 +4,6 @@ date: "2026-07-20"
 summary: "How the Business Dashboard enforces per-tenant data isolation at the ORM layer. Why controller checks alone are not enough."
 pinned: false
 ---
-
-# How I Prevented Cross-Tenant Data Leaks in a Flask App
-
 ## The App
 
 Business Dashboard is a small business management tool. Something more useful than a spreadsheet but not as heavy as a full CRM. Users sign up, add customers, create orders, and see revenue insights from a private dashboard. It is live at businessdashboard.shop.

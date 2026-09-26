@@ -4,9 +4,6 @@ date: "2026-09-25"
 summary: "Raw sockets, byte-stream parsing with strchr and memcpy, and the two real bugs that came from modifying a buffer while still reading from it."
 pinned: false
 ---
-
-# Building SparHTTP: An HTTP Server From Raw Sockets in C
-
 ## What SparHTTP Is
 
 SparHTTP is a from-scratch HTTP server written in C. No framework, no parsing library, no `malloc`. It opens a raw TCP socket, accepts one client, reads the request off the wire, parses the request line and headers by hand, and sends back a fixed `200 OK`. It's blocking and single-connection: it handles one client, then exits.

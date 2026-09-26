@@ -4,9 +4,6 @@ date: "2026-07-01"
 summary: "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The flush bug that only appeared under load."
 pinned: false
 ---
-
-# Collision-Free URL Shortening with PostgreSQL Sequences and Base62
-
 ## Why Not Just Use UUIDs?
 
 Most URL shorteners either generate random short codes and check for collisions with retry loops, or use UUIDs truncated to some length. Both approaches have problems.

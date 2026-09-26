@@ -4,9 +4,6 @@ date: "2026-07-23"
 summary: "Clustra's hierarchy: Org, Team, Project, Task. Membership layering, cascade deletes, and centralized permission checks."
 pinned: true
 ---
-
-# Designing RBAC with Independent Org and Team Roles
-
 ## What Clustra Is
 
 Clustra is a multi-organization work management API with a vanilla JavaScript frontend. Think of it as a self-hosted alternative to the backend of Linear or Jira. The hierarchy is Org, then Team, then Project, then Task. Labels and milestones belong to projects. Activity is logged at the org level and covers every model type. Users can be members of multiple orgs, and within each org they can be members of multiple teams. Every layer has its own role-based access control.

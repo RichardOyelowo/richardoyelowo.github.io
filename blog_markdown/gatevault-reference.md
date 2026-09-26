@@ -4,9 +4,6 @@ date: "2026-07-27"
 summary: "Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection."
 pinned: true
 ---
-
-# How gatevault Handles Authentication in Python
-
 ## what gatevault is
 
 gatevault is a Python authentication library that provides JWT token management, bcrypt password hashing, OAuth2 password credentials flow, and route protection. It has zero framework dependencies. The only runtime requirements are PyJWT and bcrypt.
