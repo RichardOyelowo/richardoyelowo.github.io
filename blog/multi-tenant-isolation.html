@@ -21,23 +21,22 @@
   <h1 class="article-title">How I Prevented Cross-Tenant Data Leaks in a Flask App</h1>
   <p class="article-summary">How the Business Dashboard enforces per-tenant data isolation at the ORM layer. Why controller checks alone are not enough.</p>
   <div class="article-body">
-<h1>How I Prevented Cross-Tenant Data Leaks in a Flask App</h1>
 <h2>The App</h2>
 <p>Business Dashboard is a small business management tool. Something more useful than a spreadsheet but not as heavy as a full CRM. Users sign up, add customers, create orders, and see revenue insights from a private dashboard. It is live at businessdashboard.shop.</p>
 <p>The core requirement: each user only ever sees their own data. No user can access another user's customers, orders, or revenue numbers. This sounds simple, but getting it right is where most multi-tenant apps fail.</p>
 <h2>Why Controller Checks Are Not Enough</h2>
 <p>The obvious approach is to check the current user at the controller level:</p>
-<pre class="highlight"><code class="language-python">@app.route('/customers')
-@login_required
-def list_customers():
-    customers = Customer.query.filter_by(user_id=current_user.id).all()
-    return render_template('customers.html', customers=customers)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">'/customers'</span><span class="p">)</span>
+<span class="nd">@login_required</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">list_customers</span><span class="p">():</span>
+    <span class="n">customers</span> <span class="o">=</span> <span class="n">Customer</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter_by</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">current_user</span><span class="o">.</span><span class="n">id</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">render_template</span><span class="p">(</span><span class="s1">'customers.html'</span><span class="p">,</span> <span class="n">customers</span><span class="o">=</span><span class="n">customers</span><span class="p">)</span>
+</code></pre></div>
 
 <p>This works for the happy path. But it has a fundamental problem: it depends on every developer remembering to add the filter on every query. If someone adds a new endpoint and forgets the <code>.filter_by(user_id=...)</code> clause, or if a raw SQL query slips in, or if a relationship join pulls in data from another tenant, you have a data leak. There is no safety net.</p>
 <p>I learned this the hard way during development. I had a helper function that fetched an order by ID for the edit page:</p>
-<pre class="highlight"><code class="language-python">order = Order.query.get(order_id)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="n">order</span> <span class="o">=</span> <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">order_id</span><span class="p">)</span>
+</code></pre></div>
 
 <p>No tenant filter. It worked fine in development because I was the only user. But in production with multiple users, any authenticated user could type in any order ID and see someone else's data. The fix was straightforward (add the user filter), but the fact that it was possible to forget it told me I needed a more robust approach.</p>
 <h2>Why ORM-Level Isolation Matters</h2>
@@ -53,40 +52,40 @@ def list_customers():
 <p>The more places that tenant filtering depends on developer memory, the larger the chance of an isolation bug.</p>
 <h2>The Model That Enforced the Pattern</h2>
 <p>The data model ended up being the biggest factor in how isolation works. The <code>Customer</code> model has a <code>user_id</code> foreign key, but <code>Order</code> does not. Orders belong to a customer, and customers belong to a user:</p>
-<pre class="highlight"><code class="language-python">class Customer(db.Model):
-    __tablename__ = 'customer'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey(&quot;users.id&quot;), nullable=False)
-    # ...
-    orders = db.relationship('Order', backref='customer', lazy='dynamic')
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Customer</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+    <span class="n">__tablename__</span> <span class="o">=</span> <span class="s1">'customer'</span>
+    <span class="nb">id</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">Column</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">Integer</span><span class="p">,</span> <span class="n">primary_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">user_id</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">Column</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">Integer</span><span class="p">,</span> <span class="n">db</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">(</span><span class="s2">"users.id"</span><span class="p">),</span> <span class="n">nullable</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="c1"># ...</span>
+    <span class="n">orders</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">relationship</span><span class="p">(</span><span class="s1">'Order'</span><span class="p">,</span> <span class="n">backref</span><span class="o">=</span><span class="s1">'customer'</span><span class="p">,</span> <span class="n">lazy</span><span class="o">=</span><span class="s1">'dynamic'</span><span class="p">)</span>
 
-class Order(db.Model):
-    __tablename__ = 'order'
-    id = db.Column(db.Integer, primary_key=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
-    # no user_id — isolation goes through Customer
-</code></pre>
+<span class="k">class</span><span class="w"> </span><span class="nc">Order</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+    <span class="n">__tablename__</span> <span class="o">=</span> <span class="s1">'order'</span>
+    <span class="nb">id</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">Column</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">Integer</span><span class="p">,</span> <span class="n">primary_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">customer_id</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">Column</span><span class="p">(</span><span class="n">db</span><span class="o">.</span><span class="n">Integer</span><span class="p">,</span> <span class="n">db</span><span class="o">.</span><span class="n">ForeignKey</span><span class="p">(</span><span class="s1">'customer.id'</span><span class="p">),</span> <span class="n">nullable</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="c1"># no user_id — isolation goes through Customer</span>
+</code></pre></div>
 
 <p>Because orders lack a direct <code>user_id</code>, every order query must join through <code>Customer</code> to get the tenant. This was not an afterthought. It means the application has one ownership path from an order to a user: through the customer relationship. Every order query must follow that path.</p>
 <p>This is what every order query in the app looks like:</p>
-<pre class="highlight"><code class="language-python">@orders_bp.route(&quot;/&quot;)
-@login_required
-def orders():
-    user = g.user
-    pagination = (
-        Order.query.join(Customer)
-        .filter(Customer.user_id == user.id)
-        .order_by(Order.created.desc())
-        .paginate(page=page, per_page=10, error_out=False)
-    )
-    return render_template(&quot;orders.html&quot;, orders=pagination.items, pagination=pagination)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="nd">@orders_bp</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
+<span class="nd">@login_required</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">orders</span><span class="p">():</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">g</span><span class="o">.</span><span class="n">user</span>
+    <span class="n">pagination</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">Customer</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Customer</span><span class="o">.</span><span class="n">user_id</span> <span class="o">==</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">order_by</span><span class="p">(</span><span class="n">Order</span><span class="o">.</span><span class="n">created</span><span class="o">.</span><span class="n">desc</span><span class="p">())</span>
+        <span class="o">.</span><span class="n">paginate</span><span class="p">(</span><span class="n">page</span><span class="o">=</span><span class="n">page</span><span class="p">,</span> <span class="n">per_page</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">error_out</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">render_template</span><span class="p">(</span><span class="s2">"orders.html"</span><span class="p">,</span> <span class="n">orders</span><span class="o">=</span><span class="n">pagination</span><span class="o">.</span><span class="n">items</span><span class="p">,</span> <span class="n">pagination</span><span class="o">=</span><span class="n">pagination</span><span class="p">)</span>
+</code></pre></div>
 
 <p>Every route follows this pattern. Edit, delete, list. There is no "get order by ID without a user" endpoint anywhere in the codebase. The customer routes are the same idea but simpler because <code>Customer</code> has <code>user_id</code> directly, so it is just <code>.filter_by(user_id=user.id)</code>.</p>
 <h2>Why Orders Do Not Have user_id</h2>
 <p>One possible design would be adding a user_id column directly to every tenant-owned table. That makes queries simpler:</p>
-<pre class="highlight"><code class="language-python">Order.query.filter_by(user_id=user.id)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="n">Order</span><span class="o">.</span><span class="n">query</span><span class="o">.</span><span class="n">filter_by</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+</code></pre></div>
 
 <p>The tradeoff is duplicated ownership data. Now every order has two relationships to maintain:</p>
 <p>Order -&gt; Customer -&gt; User

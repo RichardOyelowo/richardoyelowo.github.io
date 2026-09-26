@@ -21,100 +21,99 @@
   <h1 class="article-title">How gatevault Handles Authentication in Python</h1>
   <p class="article-summary">Every public function, class, and exception in gatevault, with code examples showing password hashing, JWT token management, OAuth2 login, and route protection.</p>
   <div class="article-body">
-<h1>How gatevault Handles Authentication in Python</h1>
 <h2>what gatevault is</h2>
 <p>gatevault is a Python authentication library that provides JWT token management, bcrypt password hashing, OAuth2 password credentials flow, and route protection. It has zero framework dependencies. The only runtime requirements are PyJWT and bcrypt.</p>
 <p>Install:</p>
-<pre class="highlight"><code>pip install richard-gatevault
-</code></pre>
+<div class="highlight"><pre><span></span><code>pip install richard-gatevault
+</code></pre></div>
 
 <p>Every public export:</p>
-<pre class="highlight"><code class="language-python">from gatevault import (
-    GateVault,
-    OAuthHandler,
-    TokenManager,
-    UserID,
-    normalize_user_id,
-    hash_password,
-    verify_password,
-    ShortKeyWarning,
-    GatevaultError,
-    TokenError,
-    TokenExpiredError,
-    InvalidTokenError,
-    TokenDecodeError,
-    HashingError,
-    GuardError,
-    InvalidCredentialsError,
-    UnauthorizedError,
-)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">GateVault</span><span class="p">,</span>
+    <span class="n">OAuthHandler</span><span class="p">,</span>
+    <span class="n">TokenManager</span><span class="p">,</span>
+    <span class="n">UserID</span><span class="p">,</span>
+    <span class="n">normalize_user_id</span><span class="p">,</span>
+    <span class="n">hash_password</span><span class="p">,</span>
+    <span class="n">verify_password</span><span class="p">,</span>
+    <span class="n">ShortKeyWarning</span><span class="p">,</span>
+    <span class="n">GatevaultError</span><span class="p">,</span>
+    <span class="n">TokenError</span><span class="p">,</span>
+    <span class="n">TokenExpiredError</span><span class="p">,</span>
+    <span class="n">InvalidTokenError</span><span class="p">,</span>
+    <span class="n">TokenDecodeError</span><span class="p">,</span>
+    <span class="n">HashingError</span><span class="p">,</span>
+    <span class="n">GuardError</span><span class="p">,</span>
+    <span class="n">InvalidCredentialsError</span><span class="p">,</span>
+    <span class="n">UnauthorizedError</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
 
 <hr />
 <h2>Password Hashing</h2>
 <p>Two standalone functions. No class instantiation needed. No configuration. No salt management. bcrypt handles everything.</p>
 <h3>hash_password(plain: str) -&gt; str</h3>
 <p>Takes a plain text string, hashes it with bcrypt, returns the full hash string including the embedded salt.</p>
-<pre class="highlight"><code class="language-python">from gatevault import hash_password
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">hash_password</span>
 
-hashed = hash_password(&quot;my_secure_password&quot;)
-# $2b$12$N9qo8...
-</code></pre>
+<span class="n">hashed</span> <span class="o">=</span> <span class="n">hash_password</span><span class="p">(</span><span class="s2">"my_secure_password"</span><span class="p">)</span>
+<span class="c1"># $2b$12$N9qo8...</span>
+</code></pre></div>
 
 <p>The salt is generated automatically by bcrypt and embedded in the hash string. You store this full string in your database. There is no separate salt column. There is no way to hash without a salt.</p>
 <p>If bcrypt fails internally, it raises a <code>HashingError</code>. This wraps the raw bcrypt exception so callers never need to import bcrypt to handle errors.</p>
 <h3>verify_password(plain: str, hashed: str) -&gt; bool</h3>
 <p>Takes a plain text password and a stored bcrypt hash. Returns <code>True</code> if they match, <code>False</code> if they don't. Does not raise on mismatch.</p>
-<pre class="highlight"><code class="language-python">from gatevault import verify_password
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">verify_password</span>
 
-# Correct password
-verify_password(&quot;my_secure_password&quot;, &quot;$2b$12$N9qo8...&quot;)  # True
+<span class="c1"># Correct password</span>
+<span class="n">verify_password</span><span class="p">(</span><span class="s2">"my_secure_password"</span><span class="p">,</span> <span class="s2">"$2b$12$N9qo8..."</span><span class="p">)</span>  <span class="c1"># True</span>
 
-# Wrong password
-verify_password(&quot;wrong_password&quot;, &quot;$2b$12$N9qo8...&quot;)     # False
-</code></pre>
+<span class="c1"># Wrong password</span>
+<span class="n">verify_password</span><span class="p">(</span><span class="s2">"wrong_password"</span><span class="p">,</span> <span class="s2">"$2b$12$N9qo8..."</span><span class="p">)</span>     <span class="c1"># False</span>
+</code></pre></div>
 
 <p>bcrypt extracts the salt from the stored hash string and uses it to re-hash the input. That is why you only need the hash, not a separate salt.</p>
 <h3>Practical usage</h3>
-<pre class="highlight"><code class="language-python">from gatevault import hash_password, verify_password, HashingError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">hash_password</span><span class="p">,</span> <span class="n">verify_password</span><span class="p">,</span> <span class="n">HashingError</span>
 
-# During registration
-def register(db, email: str, password: str):
-    if db.find_user_by_email(email):
-        raise ValueError(&quot;Email already registered&quot;)
+<span class="c1"># During registration</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">email</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">password</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">db</span><span class="o">.</span><span class="n">find_user_by_email</span><span class="p">(</span><span class="n">email</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Email already registered"</span><span class="p">)</span>
 
-    try:
-        hashed = hash_password(password)
-    except HashingError:
-        raise ValueError(&quot;Registration failed&quot;)
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">hashed</span> <span class="o">=</span> <span class="n">hash_password</span><span class="p">(</span><span class="n">password</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">HashingError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Registration failed"</span><span class="p">)</span>
 
-    user = db.create_user(email=email, password_hash=hashed)
-    return user
+    <span class="n">user</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">create_user</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">email</span><span class="p">,</span> <span class="n">password_hash</span><span class="o">=</span><span class="n">hashed</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">user</span>
 
-# During login
-def login(db, email: str, password: str):
-    user = db.find_user_by_email(email)
-    if not user:
-        raise ValueError(&quot;Invalid credentials&quot;)
+<span class="c1"># During login</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">login</span><span class="p">(</span><span class="n">db</span><span class="p">,</span> <span class="n">email</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">password</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">find_user_by_email</span><span class="p">(</span><span class="n">email</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">user</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Invalid credentials"</span><span class="p">)</span>
 
-    if not verify_password(password, user.password_hash):
-        raise ValueError(&quot;Invalid credentials&quot;)
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">verify_password</span><span class="p">(</span><span class="n">password</span><span class="p">,</span> <span class="n">user</span><span class="o">.</span><span class="n">password_hash</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Invalid credentials"</span><span class="p">)</span>
 
-    return user
-</code></pre>
+    <span class="k">return</span> <span class="n">user</span>
+</code></pre></div>
 
 <hr />
 <h2>Token Management</h2>
 <h3>TokenManager</h3>
 <p>The central class for JWT token creation and verification. Tokens are signed with HS256.</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span>
 
-tm = TokenManager(
-    secret_key=&quot;your-very-secure-secret-key-here&quot;,
-    access_expiry_minutes=15,
-    refresh_expiry_days=7
-)
-</code></pre>
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="s2">"your-very-secure-secret-key-here"</span><span class="p">,</span>
+    <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+    <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span>
+<span class="p">)</span>
+</code></pre></div>
 
 <p><strong>Constructor parameters:</strong></p>
 <table>
@@ -156,48 +155,48 @@ tm = TokenManager(
 <p>If <code>secret_key</code> is shorter than 32 bytes, a <code>ShortKeyWarning</code> is emitted. The library does not block you, but you should use a longer key in production. HS256 with a short secret is not secure.</p>
 <h3>User ID types</h3>
 <p>gatevault supports <code>int</code>, <code>str</code>, and <code>UUID</code> out of the box. The <code>normalize_user_id</code> function converts these into an encodable form before the token is created. UUIDs are serialized to strings automatically.</p>
-<pre class="highlight"><code class="language-python">from uuid import UUID
-from gatevault import TokenManager
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">UUID</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span>
 
-tm = TokenManager(
-    secret_key=&quot;your-very-secure-secret-key-here&quot;,
-    access_expiry_minutes=15,
-    refresh_expiry_days=7
-)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="s2">"your-very-secure-secret-key-here"</span><span class="p">,</span>
+    <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+    <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span>
+<span class="p">)</span>
 
-# All three work without any configuration
-tm.create_access_token(user_id=1)                           # int
-tm.create_access_token(user_id=&quot;user-abc-123&quot;)              # str
-tm.create_access_token(user_id=UUID(&quot;a1b2c3d4-e5f6-...&quot;)) # UUID -&gt; str
-</code></pre>
+<span class="c1"># All three work without any configuration</span>
+<span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>                           <span class="c1"># int</span>
+<span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="s2">"user-abc-123"</span><span class="p">)</span>              <span class="c1"># str</span>
+<span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">UUID</span><span class="p">(</span><span class="s2">"a1b2c3d4-e5f6-..."</span><span class="p">))</span> <span class="c1"># UUID -&gt; str</span>
+</code></pre></div>
 
 <p>If your app uses a custom type for user IDs, pass a custom encoder:</p>
-<pre class="highlight"><code class="language-python">def my_encoder(user_id):
-    # Convert your custom type to int or str
-    return str(user_id.mongo_id)
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">my_encoder</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
+    <span class="c1"># Convert your custom type to int or str</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">user_id</span><span class="o">.</span><span class="n">mongo_id</span><span class="p">)</span>
 
-tm = TokenManager(
-    secret_key=SECRET,
-    access_expiry_minutes=15,
-    refresh_expiry_days=7,
-    user_id_encoder=my_encoder
-)
-</code></pre>
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span>
+    <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+    <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">,</span>
+    <span class="n">user_id_encoder</span><span class="o">=</span><span class="n">my_encoder</span>
+<span class="p">)</span>
+</code></pre></div>
 
 <p>The encoder must return an <code>int</code> or <code>str</code>. If it returns something else, <code>TypeError</code> is raised at token creation time.</p>
 <h3>create_access_token(user_id, **kwargs) -&gt; str</h3>
 <p>Creates a short-lived JWT access token.</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 
-# Minimal
-token = tm.create_access_token(user_id=42)
-# eyJhbGciOiJIUzI1NiIs...
+<span class="c1"># Minimal</span>
+<span class="n">token</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+<span class="c1"># eyJhbGciOiJIUzI1NiIs...</span>
 
-# With extra claims
-token = tm.create_access_token(user_id=42, role=&quot;admin&quot;, org=&quot;acme-corp&quot;)
-</code></pre>
+<span class="c1"># With extra claims</span>
+<span class="n">token</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"admin"</span><span class="p">,</span> <span class="n">org</span><span class="o">=</span><span class="s2">"acme-corp"</span><span class="p">)</span>
+</code></pre></div>
 
 <p>The token payload contains:</p>
 <ul>
@@ -209,26 +208,26 @@ token = tm.create_access_token(user_id=42, role=&quot;admin&quot;, org=&quot;acm
 </ul>
 <h3>create_refresh_token(user_id, **kwargs) -&gt; str</h3>
 <p>Creates a long-lived JWT refresh token. Same interface as <code>create_access_token</code> but the <code>type</code> claim is <code>"refresh"</code> and the expiry uses <code>refresh_expiry_days</code>.</p>
-<pre class="highlight"><code class="language-python">access = tm.create_access_token(user_id=42, role=&quot;admin&quot;)
-refresh = tm.create_refresh_token(user_id=42)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="n">access</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"admin"</span><span class="p">)</span>
+<span class="n">refresh</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_refresh_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+</code></pre></div>
 
 <p>You can attach different claims to each token type. A common pattern is minimal claims on the refresh token and rich claims on the access token.</p>
 <h3>decode_token(token: str) -&gt; dict</h3>
 <p>Decodes and verifies a JWT token. Checks the signature and expiry. Returns the decoded payload dictionary.</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError, TokenDecodeError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">TokenDecodeError</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 
-token = tm.create_access_token(user_id=42, role=&quot;admin&quot;)
+<span class="n">token</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"admin"</span><span class="p">)</span>
 
-payload = tm.decode_token(token)
-print(payload[&quot;user_id&quot;])  # 42
-print(payload[&quot;role&quot;])     # admin
-print(payload[&quot;type&quot;])     # access
-print(payload[&quot;exp&quot;])      # 1751347200 (unix timestamp)
-print(payload[&quot;jti&quot;])      # 3fa85f64-5717-4562-b3fc-2c963f66afa6
-</code></pre>
+<span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>  <span class="c1"># 42</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"role"</span><span class="p">])</span>     <span class="c1"># admin</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"type"</span><span class="p">])</span>     <span class="c1"># access</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"exp"</span><span class="p">])</span>      <span class="c1"># 1751347200 (unix timestamp)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"jti"</span><span class="p">])</span>      <span class="c1"># 3fa85f64-5717-4562-b3fc-2c963f66afa6</span>
+</code></pre></div>
 
 <p><code>jti</code> is set automatically on every token, you don't pass it in. It's what keeps two tokens issued in the same second from being byte-identical, since JWT signing is deterministic and without it nothing in the payload would vary at that resolution.</p>
 <p><strong>Exceptions raised:</strong></p>
@@ -259,16 +258,16 @@ print(payload[&quot;jti&quot;])      # 3fa85f64-5717-4562-b3fc-2c963f66afa6
 <h2>Route Protection</h2>
 <h3>GateVault</h3>
 <p>Wraps a <code>TokenManager</code> into a decorator factory. Any function decorated with <code>@gate.protected</code> will not execute without a valid token. The decoded payload is injected as a <code>payload</code> keyword argument.</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">GateVault</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
-gate = GateVault(token_manager=tm)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">gate</span> <span class="o">=</span> <span class="n">GateVault</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">)</span>
 
-@gate.protected
-def get_profile(payload=None):
-    user_id = payload[&quot;user_id&quot;]
-    return db.get_user(user_id)
-</code></pre>
+<span class="nd">@gate</span><span class="o">.</span><span class="n">protected</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_profile</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">user_id</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
+</code></pre></div>
 
 <h3>How the decorator works</h3>
 <ol>
@@ -279,22 +278,22 @@ def get_profile(payload=None):
 </ol>
 <p>The decorator inspects the wrapped function. If it is an async function (<code>inspect.iscoroutinefunction</code>), it returns an async wrapper. If it is sync, it returns a sync wrapper. You do not need to think about this.</p>
 <h3>Sync usage</h3>
-<pre class="highlight"><code class="language-python">@gate.protected
-def get_orders(payload=None):
-    return db.get_orders(payload[&quot;user_id&quot;])
+<div class="highlight"><pre><span></span><code><span class="nd">@gate</span><span class="o">.</span><span class="n">protected</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_orders</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">get_orders</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
 
-# Call it
-get_orders(token=&quot;eyJhbGci...&quot;)
-</code></pre>
+<span class="c1"># Call it</span>
+<span class="n">get_orders</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="s2">"eyJhbGci..."</span><span class="p">)</span>
+</code></pre></div>
 
 <h3>Async usage</h3>
-<pre class="highlight"><code class="language-python">@gate.protected
-async def get_orders(payload=None):
-    return await db.fetch_orders(payload[&quot;user_id&quot;])
+<div class="highlight"><pre><span></span><code><span class="nd">@gate</span><span class="o">.</span><span class="n">protected</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_orders</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">fetch_orders</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
 
-# Call it
-await get_orders(token=&quot;eyJhbGci...&quot;)
-</code></pre>
+<span class="c1"># Call it</span>
+<span class="k">await</span> <span class="n">get_orders</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="s2">"eyJhbGci..."</span><span class="p">)</span>
+</code></pre></div>
 
 <h3>Exceptions from the decorator</h3>
 <table>
@@ -325,64 +324,64 @@ await get_orders(token=&quot;eyJhbGci...&quot;)
 </table>
 <h3>FastAPI integration example</h3>
 <p>gatevault does not parse framework-specific request objects. The caller extracts the token from the request and passes it in. This keeps the library framework-free.</p>
-<pre class="highlight"><code class="language-python">from fastapi import FastAPI, Header
-from fastapi.responses import JSONResponse
-from gatevault import TokenManager, GateVault, GuardError, UnauthorizedError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">Header</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">JSONResponse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">GateVault</span><span class="p">,</span> <span class="n">GuardError</span><span class="p">,</span> <span class="n">UnauthorizedError</span>
 
-app = FastAPI()
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
-gate = GateVault(token_manager=tm)
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">gate</span> <span class="o">=</span> <span class="n">GateVault</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">)</span>
 
-def get_profile(payload=None):
-    user = db.get_user(payload[&quot;user_id&quot;])
-    return {&quot;id&quot;: user.id, &quot;email&quot;: user.email}
+<span class="k">def</span><span class="w"> </span><span class="nf">get_profile</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="s2">"email"</span><span class="p">:</span> <span class="n">user</span><span class="o">.</span><span class="n">email</span><span class="p">}</span>
 
-@app.get(&quot;/me&quot;)
-def me(authorization: str = Header(None)):
-    token = authorization.split(&quot; &quot;)[1] if authorization else None
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/me"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">me</span><span class="p">(</span><span class="n">authorization</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">Header</span><span class="p">(</span><span class="kc">None</span><span class="p">)):</span>
+    <span class="n">token</span> <span class="o">=</span> <span class="n">authorization</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">authorization</span> <span class="k">else</span> <span class="kc">None</span>
 
-    try:
-        return gate.protected(get_profile)(token=token)
-    except GuardError as e:
-        return JSONResponse(status_code=401, content={&quot;error&quot;: str(e)})
-    except UnauthorizedError:
-        return JSONResponse(status_code=401, content={&quot;error&quot;: &quot;Invalid token&quot;})
-</code></pre>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">gate</span><span class="o">.</span><span class="n">protected</span><span class="p">(</span><span class="n">get_profile</span><span class="p">)(</span><span class="n">token</span><span class="o">=</span><span class="n">token</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">GuardError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">JSONResponse</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">401</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)})</span>
+    <span class="k">except</span> <span class="n">UnauthorizedError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">JSONResponse</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">401</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Invalid token"</span><span class="p">})</span>
+</code></pre></div>
 
 <h3>Flask integration example</h3>
-<pre class="highlight"><code class="language-python">from flask import Flask, request, jsonify
-from gatevault import TokenManager, GateVault, GuardError, UnauthorizedError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">flask</span><span class="w"> </span><span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">jsonify</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">GateVault</span><span class="p">,</span> <span class="n">GuardError</span><span class="p">,</span> <span class="n">UnauthorizedError</span>
 
-app = Flask(__name__)
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
-gate = GateVault(token_manager=tm)
+<span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">gate</span> <span class="o">=</span> <span class="n">GateVault</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">)</span>
 
-def get_profile(payload=None):
-    user = db.get_user(payload[&quot;user_id&quot;])
-    return {&quot;id&quot;: user.id, &quot;email&quot;: user.email}
+<span class="k">def</span><span class="w"> </span><span class="nf">get_profile</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">user</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="s2">"email"</span><span class="p">:</span> <span class="n">user</span><span class="o">.</span><span class="n">email</span><span class="p">}</span>
 
-@app.route(&quot;/me&quot;)
-def me():
-    auth = request.headers.get(&quot;Authorization&quot;, &quot;&quot;)
-    token = auth.split(&quot; &quot;)[1] if auth.startswith(&quot;Bearer &quot;) else None
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s2">"/me"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">me</span><span class="p">():</span>
+    <span class="n">auth</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"Authorization"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
+    <span class="n">token</span> <span class="o">=</span> <span class="n">auth</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">" "</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">auth</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"Bearer "</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
 
-    try:
-        return jsonify(gate.protected(get_profile)(token=token))
-    except GuardError as e:
-        return jsonify({&quot;error&quot;: str(e)}), 401
-    except UnauthorizedError:
-        return jsonify({&quot;error&quot;: &quot;Invalid token&quot;}), 401
-</code></pre>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">(</span><span class="n">gate</span><span class="o">.</span><span class="n">protected</span><span class="p">(</span><span class="n">get_profile</span><span class="p">)(</span><span class="n">token</span><span class="o">=</span><span class="n">token</span><span class="p">))</span>
+    <span class="k">except</span> <span class="n">GuardError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">"error"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}),</span> <span class="mi">401</span>
+    <span class="k">except</span> <span class="n">UnauthorizedError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Invalid token"</span><span class="p">}),</span> <span class="mi">401</span>
+</code></pre></div>
 
 <hr />
 <h2>OAuth2 Password Credentials Flow</h2>
 <h3>OAuthHandler</h3>
 <p>Wires together user lookup, password verification, and token generation into a single call. Follows the OAuth2 Resource Owner Password Credentials flow.</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, OAuthHandler
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">OAuthHandler</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
-handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
-</code></pre>
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user_from_db</span><span class="p">)</span>
+</code></pre></div>
 
 <p><strong>Constructor parameters:</strong></p>
 <table>
@@ -418,53 +417,53 @@ handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
 <p>The <code>get_user</code> callable is your integration point. gatevault does not import any ORM or database library. You provide the lookup logic, and gatevault handles password verification and token generation.</p>
 <h3>login(username: str, password: str) -&gt; dict</h3>
 <p>Authenticates a user synchronously and returns a token pair.</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, OAuthHandler
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">OAuthHandler</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 
-def get_user_from_db(username: str):
-    return db.execute(
-        &quot;SELECT id, hashed_password FROM users WHERE email = ?&quot;, (username,)
-    ).fetchone()
+<span class="k">def</span><span class="w"> </span><span class="nf">get_user_from_db</span><span class="p">(</span><span class="n">username</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+        <span class="s2">"SELECT id, hashed_password FROM users WHERE email = ?"</span><span class="p">,</span> <span class="p">(</span><span class="n">username</span><span class="p">,)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
-tokens = handler.login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user_from_db</span><span class="p">)</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="n">handler</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="s2">"john@example.com"</span><span class="p">,</span> <span class="s2">"mypassword"</span><span class="p">)</span>
 
-print(tokens)
-# {
-#     &quot;access_token&quot;: &quot;eyJhbGciOiJIUzI1NiIs...&quot;,
-#     &quot;refresh_token&quot;: &quot;eyJhbGciOiJIUzI1NiIs...&quot;,
-#     &quot;token_type&quot;: &quot;bearer&quot;
-# }
-</code></pre>
+<span class="nb">print</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+<span class="c1"># {</span>
+<span class="c1">#     "access_token": "eyJhbGciOiJIUzI1NiIs...",</span>
+<span class="c1">#     "refresh_token": "eyJhbGciOiJIUzI1NiIs...",</span>
+<span class="c1">#     "token_type": "bearer"</span>
+<span class="c1"># }</span>
+</code></pre></div>
 
 <h3>async_login(username: str, password: str) -&gt; dict</h3>
 <p>Same as <code>login</code> but awaits <code>get_user</code>. Use this when your lookup function is async.</p>
-<pre class="highlight"><code class="language-python">async def get_user(username: str):
-    result = await db.execute(select(User).where(User.email == username))
-    return result.scalar_one_or_none()
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user</span><span class="p">(</span><span class="n">username</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">select</span><span class="p">(</span><span class="n">User</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">User</span><span class="o">.</span><span class="n">email</span> <span class="o">==</span> <span class="n">username</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">scalar_one_or_none</span><span class="p">()</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user)
-tokens = await handler.async_login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
-</code></pre>
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user</span><span class="p">)</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="k">await</span> <span class="n">handler</span><span class="o">.</span><span class="n">async_login</span><span class="p">(</span><span class="s2">"john@example.com"</span><span class="p">,</span> <span class="s2">"mypassword"</span><span class="p">)</span>
+</code></pre></div>
 
 <h3>async_refresh(refresh_token: str) -&gt; dict</h3>
 <p>Exchanges a valid refresh token for a new access and refresh token pair. Rotates on every call, the refresh token you pass in is never handed back out again.</p>
-<pre class="highlight"><code class="language-python">async def get_user_by_id(user_id):
-    result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user_by_id</span><span class="p">(</span><span class="n">user_id</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">select</span><span class="p">(</span><span class="n">User</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">User</span><span class="o">.</span><span class="n">id</span> <span class="o">==</span> <span class="n">user_id</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">scalar_one_or_none</span><span class="p">()</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user, get_user_by_id=get_user_by_id)
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user</span><span class="p">,</span> <span class="n">get_user_by_id</span><span class="o">=</span><span class="n">get_user_by_id</span><span class="p">)</span>
 
-tokens = await handler.async_refresh(refresh_token)
+<span class="n">tokens</span> <span class="o">=</span> <span class="k">await</span> <span class="n">handler</span><span class="o">.</span><span class="n">async_refresh</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">)</span>
 
-print(tokens)
-# {
-#     &quot;access_token&quot;: &quot;eyJhbGci...&quot;,
-#     &quot;refresh_token&quot;: &quot;eyJhbGci...&quot;,
-#     &quot;token_type&quot;: &quot;bearer&quot;
-# }
-</code></pre>
+<span class="nb">print</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span>
+<span class="c1"># {</span>
+<span class="c1">#     "access_token": "eyJhbGci...",</span>
+<span class="c1">#     "refresh_token": "eyJhbGci...",</span>
+<span class="c1">#     "token_type": "bearer"</span>
+<span class="c1"># }</span>
+</code></pre></div>
 
 <p>Steps, in order:</p>
 <ol>
@@ -473,13 +472,13 @@ print(tokens)
 <li>If <code>get_user_by_id</code> was passed at setup, look the user up and raise <code>InvalidCredentialsError</code> if they no longer exist</li>
 <li>Issue a fresh access token and a fresh refresh token</li>
 </ol>
-<pre class="highlight"><code class="language-python">from gatevault import TokenExpiredError, TokenDecodeError, InvalidTokenError, InvalidCredentialsError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">TokenDecodeError</span><span class="p">,</span> <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">InvalidCredentialsError</span>
 
-try:
-    tokens = await handler.async_refresh(refresh_token)
-except (TokenExpiredError, TokenDecodeError, InvalidTokenError, InvalidCredentialsError):
-    return {&quot;error&quot;: &quot;Invalid or expired refresh token&quot;}, 401
-</code></pre>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="k">await</span> <span class="n">handler</span><span class="o">.</span><span class="n">async_refresh</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">)</span>
+<span class="k">except</span> <span class="p">(</span><span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">TokenDecodeError</span><span class="p">,</span> <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">InvalidCredentialsError</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Invalid or expired refresh token"</span><span class="p">},</span> <span class="mi">401</span>
+</code></pre></div>
 
 <p>Collapse all four exceptions to the same generic message and status code. Telling the caller which one it was, expired versus malformed versus a deleted user, hands an attacker probing refresh tokens a way to tell those cases apart.</p>
 <p><code>async_refresh</code> rotates the pair but does not track tokens anywhere. It has no way to know if a refresh token was stolen and is being replayed after the legitimate user already rotated past it. If you need that, see <a href="#refresh-with-rotation">Refresh with rotation</a> below.</p>
@@ -495,22 +494,22 @@ except (TokenExpiredError, TokenDecodeError, InvalidTokenError, InvalidCredentia
 <li>If token creation fails (e.g. unsupported user ID type), raise <code>GuardError("invalid user id or token_manager error")</code></li>
 </ol>
 <h3>Login error handling</h3>
-<pre class="highlight"><code class="language-python">from gatevault import (
-    OAuthHandler, InvalidCredentialsError,
-    UnauthorizedError, GuardError
-)
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">OAuthHandler</span><span class="p">,</span> <span class="n">InvalidCredentialsError</span><span class="p">,</span>
+    <span class="n">UnauthorizedError</span><span class="p">,</span> <span class="n">GuardError</span>
+<span class="p">)</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user_from_db</span><span class="p">)</span>
 
-try:
-    tokens = handler.login(email, password)
-except InvalidCredentialsError:
-    return {&quot;error&quot;: &quot;No account found with that email&quot;}, 404
-except UnauthorizedError:
-    return {&quot;error&quot;: &quot;Wrong password&quot;}, 401
-except GuardError as e:
-    return {&quot;error&quot;: f&quot;Auth system error: {e}&quot;}, 500
-</code></pre>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">handler</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">InvalidCredentialsError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"No account found with that email"</span><span class="p">},</span> <span class="mi">404</span>
+<span class="k">except</span> <span class="n">UnauthorizedError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Wrong password"</span><span class="p">},</span> <span class="mi">401</span>
+<span class="k">except</span> <span class="n">GuardError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Auth system error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">},</span> <span class="mi">500</span>
+</code></pre></div>
 
 <p>Three distinct exceptions for three distinct failures. No ambiguity.</p>
 <hr />
@@ -519,66 +518,66 @@ except GuardError as e:
 <p>JWT tokens are stateless by design. Once issued, they cannot be individually revoked without external state. gatevault does not try to solve that part. It gives you a safe rotation primitive, plus the lower-level <code>create_access_token</code>, <code>create_refresh_token</code>, and <code>decode_token</code> if you want to build the exchange yourself. Your application handles persistence and revocation either way.</p>
 <h3>Basic refresh endpoint</h3>
 <p>If you're not using <code>OAuthHandler</code>, or want to see what <code>async_refresh</code> is doing internally, here's the same exchange written directly against <code>TokenManager</code>:</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, TokenExpiredError, InvalidTokenError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">InvalidTokenError</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 
-def refresh_tokens(refresh_token: str) -&gt; dict:
-    # Decode the refresh token
-    payload = tm.decode_token(refresh_token)
+<span class="k">def</span><span class="w"> </span><span class="nf">refresh_tokens</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="c1"># Decode the refresh token</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">)</span>
 
-    # Verify it is actually a refresh token
-    if payload[&quot;type&quot;] != &quot;refresh&quot;:
-        raise ValueError(&quot;Expected refresh token&quot;)
+    <span class="c1"># Verify it is actually a refresh token</span>
+    <span class="k">if</span> <span class="n">payload</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">"refresh"</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Expected refresh token"</span><span class="p">)</span>
 
-    # Issue a new pair
-    new_access = tm.create_access_token(user_id=payload[&quot;user_id&quot;])
-    new_refresh = tm.create_refresh_token(user_id=payload[&quot;user_id&quot;])
+    <span class="c1"># Issue a new pair</span>
+    <span class="n">new_access</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
+    <span class="n">new_refresh</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_refresh_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
 
-    return {
-        &quot;access_token&quot;: new_access,
-        &quot;refresh_token&quot;: new_refresh,
-        &quot;token_type&quot;: &quot;bearer&quot;
-    }
-</code></pre>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">"access_token"</span><span class="p">:</span> <span class="n">new_access</span><span class="p">,</span>
+        <span class="s2">"refresh_token"</span><span class="p">:</span> <span class="n">new_refresh</span><span class="p">,</span>
+        <span class="s2">"token_type"</span><span class="p">:</span> <span class="s2">"bearer"</span>
+    <span class="p">}</span>
+</code></pre></div>
 
 <h3>Refresh with rotation</h3>
 <p>If you need family-based rotation (where reusing an old refresh token invalidates the entire token family), you would add external state tracking:</p>
-<pre class="highlight"><code class="language-python">def refresh_tokens_with_rotation(refresh_token: str, db) -&gt; dict:
-    payload = tm.decode_token(refresh_token)
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">refresh_tokens_with_rotation</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">db</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">)</span>
 
-    if payload[&quot;type&quot;] != &quot;refresh&quot;:
-        raise ValueError(&quot;Expected refresh token&quot;)
+    <span class="k">if</span> <span class="n">payload</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">"refresh"</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Expected refresh token"</span><span class="p">)</span>
 
-    # Check if this token has been rotated
-    token_record = db.get_refresh_token(payload[&quot;jti&quot;])
-    if token_record and token_record.rotated:
-        # Reuse detected. Invalidate the entire family.
-        db.invalidate_family(token_record.family_id)
-        raise ValueError(&quot;Token reuse detected. Please re-authenticate.&quot;)
+    <span class="c1"># Check if this token has been rotated</span>
+    <span class="n">token_record</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_refresh_token</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"jti"</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">token_record</span> <span class="ow">and</span> <span class="n">token_record</span><span class="o">.</span><span class="n">rotated</span><span class="p">:</span>
+        <span class="c1"># Reuse detected. Invalidate the entire family.</span>
+        <span class="n">db</span><span class="o">.</span><span class="n">invalidate_family</span><span class="p">(</span><span class="n">token_record</span><span class="o">.</span><span class="n">family_id</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Token reuse detected. Please re-authenticate."</span><span class="p">)</span>
 
-    # Mark current token as rotated
-    db.mark_rotated(payload[&quot;jti&quot;])
+    <span class="c1"># Mark current token as rotated</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">mark_rotated</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"jti"</span><span class="p">])</span>
 
-    # Issue new pair in the same family
-    new_access = tm.create_access_token(user_id=payload[&quot;user_id&quot;])
-    new_refresh = tm.create_refresh_token(user_id=payload[&quot;user_id&quot;])
+    <span class="c1"># Issue new pair in the same family</span>
+    <span class="n">new_access</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
+    <span class="n">new_refresh</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_refresh_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
 
-    # Store new token with the same family ID
-    db.store_refresh_token(new_refresh, family_id=token_record.family_id)
+    <span class="c1"># Store new token with the same family ID</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">store_refresh_token</span><span class="p">(</span><span class="n">new_refresh</span><span class="p">,</span> <span class="n">family_id</span><span class="o">=</span><span class="n">token_record</span><span class="o">.</span><span class="n">family_id</span><span class="p">)</span>
 
-    return {
-        &quot;access_token&quot;: new_access,
-        &quot;refresh_token&quot;: new_refresh,
-        &quot;token_type&quot;: &quot;bearer&quot;
-    }
-</code></pre>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">"access_token"</span><span class="p">:</span> <span class="n">new_access</span><span class="p">,</span>
+        <span class="s2">"refresh_token"</span><span class="p">:</span> <span class="n">new_refresh</span><span class="p">,</span>
+        <span class="s2">"token_type"</span><span class="p">:</span> <span class="s2">"bearer"</span>
+    <span class="p">}</span>
+</code></pre></div>
 
 <p>This is application-level code. gatevault provides <code>async_refresh</code> for the base rotation step, plus <code>create_access_token</code>, <code>create_refresh_token</code>, and <code>decode_token</code> if you want to build it yourself. The family tracking, persistence, and reuse detection above are yours to implement based on your requirements.</p>
 <hr />
 <h2>Exception Hierarchy</h2>
 <p>All gatevault exceptions inherit from <code>GatevaultError</code>. You can catch it broadly or handle specific cases.</p>
-<pre class="highlight"><code>GatevaultError                          # Base exception for all gatevault errors
+<div class="highlight"><pre><span></span><code>GatevaultError                          # Base exception for all gatevault errors
 ├── TokenError                          # Base for JWT-related errors
 │   ├── TokenExpiredError               # Token has expired
 │   ├── InvalidTokenError               # Token signature is invalid
@@ -587,85 +586,85 @@ def refresh_tokens(refresh_token: str) -&gt; dict:
 └── GuardError                          # Base for auth guard errors
     ├── InvalidCredentialsError         # User not found during login, or during async_refresh if get_user_by_id is set
     └── UnauthorizedError               # Password mismatch or invalid token in guard
-</code></pre>
+</code></pre></div>
 
 <p>Internal PyJWT exceptions (<code>ExpiredSignatureError</code>, <code>InvalidSignatureError</code>, <code>DecodeError</code>, <code>InvalidTokenError</code>) are caught inside gatevault and re-raised as the appropriate gatevault exception. Callers never need to import PyJWT.</p>
 <h3>Broad catch</h3>
-<pre class="highlight"><code class="language-python">from gatevault import GatevaultError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">GatevaultError</span>
 
-try:
-    payload = tm.decode_token(token)
-except GatevaultError as e:
-    return {&quot;error&quot;: str(e)}
-</code></pre>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">GatevaultError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span>
+</code></pre></div>
 
 <h3>Specific catches</h3>
-<pre class="highlight"><code class="language-python">from gatevault import TokenExpiredError, InvalidTokenError, TokenDecodeError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">TokenDecodeError</span>
 
-try:
-    payload = tm.decode_token(token)
-except TokenExpiredError:
-    return {&quot;error&quot;: &quot;Token expired&quot;}
-except TokenDecodeError:
-    return {&quot;error&quot;: &quot;Malformed token&quot;}
-except InvalidTokenError:
-    return {&quot;error&quot;: &quot;Invalid signature&quot;}
-</code></pre>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">TokenExpiredError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Token expired"</span><span class="p">}</span>
+<span class="k">except</span> <span class="n">TokenDecodeError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Malformed token"</span><span class="p">}</span>
+<span class="k">except</span> <span class="n">InvalidTokenError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Invalid signature"</span><span class="p">}</span>
+</code></pre></div>
 
 <h3>Login-specific catches</h3>
-<pre class="highlight"><code class="language-python">from gatevault import InvalidCredentialsError, UnauthorizedError, GuardError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">InvalidCredentialsError</span><span class="p">,</span> <span class="n">UnauthorizedError</span><span class="p">,</span> <span class="n">GuardError</span>
 
-try:
-    tokens = handler.login(email, password)
-except InvalidCredentialsError:
-    return {&quot;error&quot;: &quot;No account found&quot;}
-except UnauthorizedError:
-    return {&quot;error&quot;: &quot;Wrong password&quot;}
-except GuardError as e:
-    return {&quot;error&quot;: f&quot;Auth error: {e}&quot;}
-</code></pre>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">handler</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">InvalidCredentialsError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"No account found"</span><span class="p">}</span>
+<span class="k">except</span> <span class="n">UnauthorizedError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Wrong password"</span><span class="p">}</span>
+<span class="k">except</span> <span class="n">GuardError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Auth error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">}</span>
+</code></pre></div>
 
 <hr />
 <h2>ShortKeyWarning</h2>
 <p>A warning class emitted when the <code>TokenManager</code> secret key is shorter than 32 bytes.</p>
-<pre class="highlight"><code class="language-python">import warnings
-from gatevault import TokenManager, ShortKeyWarning
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">ShortKeyWarning</span>
 
-with warnings.catch_warnings(record=True) as w:
-    warnings.simplefilter(&quot;always&quot;)
-    tm = TokenManager(secret_key=&quot;short&quot;, access_expiry_minutes=15, refresh_expiry_days=7)
-    assert len(w) == 1
-    assert issubclass(w[0].category, ShortKeyWarning)
-</code></pre>
+<span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">(</span><span class="n">record</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">as</span> <span class="n">w</span><span class="p">:</span>
+    <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">"always"</span><span class="p">)</span>
+    <span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="s2">"short"</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="k">assert</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">category</span><span class="p">,</span> <span class="n">ShortKeyWarning</span><span class="p">)</span>
+</code></pre></div>
 
 <p>This is a warning, not an error. During development a short key is convenient. In production, use at least 32 bytes.</p>
 <hr />
 <h2>UserID Type</h2>
 <p>gatevault exports a <code>UserID</code> type alias for type hints:</p>
-<pre class="highlight"><code class="language-python">from typing import Union
-from uuid import UUID
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">UUID</span>
 
-UserID = Union[int, str, UUID]
-</code></pre>
+<span class="n">UserID</span> <span class="o">=</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">UUID</span><span class="p">]</span>
+</code></pre></div>
 
 <p>This is the type that <code>create_access_token</code> and <code>create_refresh_token</code> accept for the <code>user_id</code> parameter. You can use it in your own type hints:</p>
-<pre class="highlight"><code class="language-python">from gatevault import UserID, TokenManager
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserID</span><span class="p">,</span> <span class="n">TokenManager</span>
 
-def create_user_token(tm: TokenManager, user_id: UserID) -&gt; str:
-    return tm.create_access_token(user_id=user_id)
-</code></pre>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_user_token</span><span class="p">(</span><span class="n">tm</span><span class="p">:</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">user_id</span><span class="p">:</span> <span class="n">UserID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">user_id</span><span class="p">)</span>
+</code></pre></div>
 
 <hr />
 <h2>normalize_user_id(user_id: UserID) -&gt; Union[int, str]</h2>
 <p>The default <code>user_id_encoder</code> used by <code>TokenManager</code>. Converts <code>int</code>, <code>str</code>, and <code>UUID</code> values into an encodable form. UUIDs are converted to strings. ints and strings pass through unchanged.</p>
-<pre class="highlight"><code class="language-python">from gatevault import normalize_user_id
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">normalize_user_id</span>
 
-normalize_user_id(42)                    # 42 (int)
-normalize_user_id(&quot;user-abc&quot;)            # &quot;user-abc&quot; (str)
-normalize_user_id(UUID(&quot;a1b2c3d4-...&quot;)) # &quot;a1b2c3d4-...&quot; (str)
+<span class="n">normalize_user_id</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>                    <span class="c1"># 42 (int)</span>
+<span class="n">normalize_user_id</span><span class="p">(</span><span class="s2">"user-abc"</span><span class="p">)</span>            <span class="c1"># "user-abc" (str)</span>
+<span class="n">normalize_user_id</span><span class="p">(</span><span class="n">UUID</span><span class="p">(</span><span class="s2">"a1b2c3d4-..."</span><span class="p">))</span> <span class="c1"># "a1b2c3d4-..." (str)</span>
 
-normalize_user_id([1, 2, 3])  # raises TypeError
-</code></pre>
+<span class="n">normalize_user_id</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>  <span class="c1"># raises TypeError</span>
+</code></pre></div>
 
 <p>Raises <code>TypeError</code> if the value is not <code>int</code>, <code>str</code>, or <code>UUID</code>.</p>
   </div>

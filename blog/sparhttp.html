@@ -21,7 +21,6 @@
   <h1 class="article-title">Building SparHTTP: An HTTP Server From Raw Sockets in C</h1>
   <p class="article-summary">Raw sockets, byte-stream parsing with strchr and memcpy, and the two real bugs that came from modifying a buffer while still reading from it.</p>
   <div class="article-body">
-<h1>Building SparHTTP: An HTTP Server From Raw Sockets in C</h1>
 <h2>What SparHTTP Is</h2>
 <p>SparHTTP is a from-scratch HTTP server written in C. No framework, no parsing library, no <code>malloc</code>. It opens a raw TCP socket, accepts one client, reads the request off the wire, parses the request line and headers by hand, and sends back a fixed <code>200 OK</code>. It's blocking and single-connection: it handles one client, then exits.</p>
 <p>The goal wasn't a server that could run in production. It was to see every layer between a socket and an HTTP response, the layers a framework like Flask or FastAPI normally hides. This post covers how the three files split responsibility, the two real bugs I hit while parsing and serializing, and what the server still doesn't do.</p>
@@ -34,118 +33,118 @@
 <p><code>server.c</code> has no idea what an HTTP header is. <code>http.c</code> has no idea a TCP connection exists. Neither file needs to know how the other one works, which made each piece easy to test and reason about on its own.</p>
 <h2>Opening, Binding, and Listening</h2>
 <p>Socket setup is hardcoded, not configurable: <code>127.0.0.1:41783</code>, backlog of 10.</p>
-<pre class="highlight"><code class="language-c">#define PORT 41783
-#define ADDRESS &quot;127.0.0.1&quot;
-#define BACKLOG 10
+<div class="highlight"><pre><span></span><code><span class="cp">#define PORT 41783</span>
+<span class="cp">#define ADDRESS "127.0.0.1"</span>
+<span class="cp">#define BACKLOG 10</span>
 
-int create_server() {
-    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in server_address;
-    socklen_t address_length = sizeof(server_address);
+<span class="kt">int</span><span class="w"> </span><span class="nf">create_server</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">server_socket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">socket</span><span class="p">(</span><span class="n">AF_INET</span><span class="p">,</span><span class="w"> </span><span class="n">SOCK_STREAM</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">sockaddr_in</span><span class="w"> </span><span class="n">server_address</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">socklen_t</span><span class="w"> </span><span class="n">address_length</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">server_address</span><span class="p">);</span>
 
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(PORT);
-    inet_pton(AF_INET, ADDRESS, &amp;server_address.sin_addr);
+<span class="w">    </span><span class="n">server_address</span><span class="p">.</span><span class="n">sin_family</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">AF_INET</span><span class="p">;</span>
+<span class="w">    </span><span class="n">server_address</span><span class="p">.</span><span class="n">sin_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">htons</span><span class="p">(</span><span class="n">PORT</span><span class="p">);</span>
+<span class="w">    </span><span class="n">inet_pton</span><span class="p">(</span><span class="n">AF_INET</span><span class="p">,</span><span class="w"> </span><span class="n">ADDRESS</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">server_address</span><span class="p">.</span><span class="n">sin_addr</span><span class="p">);</span>
 
-    int reuse = 1;
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &amp;reuse, sizeof(reuse));
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">reuse</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">    </span><span class="n">setsockopt</span><span class="p">(</span><span class="n">server_socket</span><span class="p">,</span><span class="w"> </span><span class="n">SOL_SOCKET</span><span class="p">,</span><span class="w"> </span><span class="n">SO_REUSEADDR</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">reuse</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">reuse</span><span class="p">));</span>
 
-    if (bind(server_socket, (struct sockaddr *)&amp;server_address, address_length) &lt; 0)
-        printf(&quot;Binding Error Occurred\n&quot;);
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">bind</span><span class="p">(</span><span class="n">server_socket</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="k">struct</span><span class="w"> </span><span class="nc">sockaddr</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">server_address</span><span class="p">,</span><span class="w"> </span><span class="n">address_length</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">"Binding Error Occurred</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
 
-    if (listen(server_socket, BACKLOG) &lt; 0)
-        printf(&quot;Listen Error Occurred\n&quot;);
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">listen</span><span class="p">(</span><span class="n">server_socket</span><span class="p">,</span><span class="w"> </span><span class="n">BACKLOG</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">"Listen Error Occurred</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
 
-    return server_socket;
-}
-</code></pre>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">server_socket</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p><code>SO_REUSEADDR</code> is there because restarting the server right after a test run made <code>bind()</code> fail, the previous socket was still sitting in <code>TIME_WAIT</code>. Without it, every restart during development meant waiting it out or changing the port.</p>
 <p>Accepting a client is a separate function, and it returns a different socket than the one passed in:</p>
-<pre class="highlight"><code class="language-c">int accept_client(int server_socket) {
-    struct sockaddr_in client_address;
-    socklen_t address_length = sizeof(client_address);
-    return accept(server_socket, (struct sockaddr *)&amp;client_address, &amp;address_length);
-}
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">accept_client</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">server_socket</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">sockaddr_in</span><span class="w"> </span><span class="n">client_address</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">socklen_t</span><span class="w"> </span><span class="n">address_length</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">client_address</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">accept</span><span class="p">(</span><span class="n">server_socket</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="k">struct</span><span class="w"> </span><span class="nc">sockaddr</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">client_address</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">address_length</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p><code>server_socket</code> is the listening socket. The value <code>accept()</code> returns is the socket for that one connected client. <code>client_address</code> isn't an input, <code>accept()</code> writes into it once a connection actually lands.</p>
 <h2>Receiving the Request</h2>
-<pre class="highlight"><code class="language-c">ssize_t receive_request(int client_socket, char *buffer, size_t buffer_size) {
-    ssize_t nread = recv(client_socket, buffer, buffer_size - 1, 0);
-    if (nread &lt; 0) {
-        perror(&quot;recv&quot;);
-    } else {
-        buffer[nread] = '\0';
-    }
-    return nread;
-}
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="kt">ssize_t</span><span class="w"> </span><span class="nf">receive_request</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">client_socket</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">buffer_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">ssize_t</span><span class="w"> </span><span class="n">nread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">recv</span><span class="p">(</span><span class="n">client_socket</span><span class="p">,</span><span class="w"> </span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="n">buffer_size</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">nread</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">perror</span><span class="p">(</span><span class="s">"recv"</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">buffer</span><span class="p">[</span><span class="n">nread</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">nread</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p><code>buffer_size - 1</code> leaves one byte free so the buffer can be null-terminated after the read, which is what makes it safe to run <code>strchr()</code> or <code>printf("%s", buffer)</code> on it afterward. <code>recv()</code> itself has no concept of HTTP: it doesn't know where headers end, what <code>Content-Length</code> means, or whether the request even arrived in one piece. A single call isn't guaranteed to return the whole request, a large enough request can legitimately arrive across multiple <code>recv()</code> calls. SparHTTP currently reads once and assumes it got everything, which is fine for a small request over localhost and wrong in general.</p>
 <h2>Parsing the Request</h2>
 <p>The parser walks the buffer with one pointer instead of copying substrings around, cutting each line at <code>\r</code> and null-terminating it in place:</p>
-<pre class="highlight"><code class="language-c">char *current = buffer;
+<div class="highlight"><pre><span></span><code><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">buffer</span><span class="p">;</span>
 
-while (current[0] != '\r' || current[1] != '\n') {
-    char *end = strchr(current, '\r');
-    if (end == NULL) break;
-    *end = '\0';
+<span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">current</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="sc">'\r'</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">current</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="sc">'\n'</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">end</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strchr</span><span class="p">(</span><span class="n">current</span><span class="p">,</span><span class="w"> </span><span class="sc">'\r'</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">end</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">NULL</span><span class="p">)</span><span class="w"> </span><span class="k">break</span><span class="p">;</span>
+<span class="w">    </span><span class="o">*</span><span class="n">end</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">;</span>
 
-    if (line_count == 0) {
-        char *first_space = strchr(current, ' ');
-        size_t method_len = first_space - current;
-        memcpy(request_line-&gt;method, current, method_len);
-        request_line-&gt;method[method_len] = '\0';
-        current = first_space + 1;
-        // path and version get pulled out the same way, then current = end + 2
-    } else {
-        char *colon = strchr(current, ':');
-        if (colon == NULL) break;
-        size_t header_len = colon - current;
-        memcpy(header[header_count].name, current, header_len);
-        header[header_count].name[header_len] = '\0';
-        current = colon + 2;
-        // value gets copied the same way, up to `end`
-    }
-}
-</code></pre>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">line_count</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">first_space</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strchr</span><span class="p">(</span><span class="n">current</span><span class="p">,</span><span class="w"> </span><span class="sc">' '</span><span class="p">);</span>
+<span class="w">        </span><span class="kt">size_t</span><span class="w"> </span><span class="n">method_len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">first_space</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">current</span><span class="p">;</span>
+<span class="w">        </span><span class="n">memcpy</span><span class="p">(</span><span class="n">request_line</span><span class="o">-&gt;</span><span class="n">method</span><span class="p">,</span><span class="w"> </span><span class="n">current</span><span class="p">,</span><span class="w"> </span><span class="n">method_len</span><span class="p">);</span>
+<span class="w">        </span><span class="n">request_line</span><span class="o">-&gt;</span><span class="n">method</span><span class="p">[</span><span class="n">method_len</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">;</span>
+<span class="w">        </span><span class="n">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">first_space</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<span class="w">        </span><span class="c1">// path and version get pulled out the same way, then current = end + 2</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">colon</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">strchr</span><span class="p">(</span><span class="n">current</span><span class="p">,</span><span class="w"> </span><span class="sc">':'</span><span class="p">);</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">colon</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nb">NULL</span><span class="p">)</span><span class="w"> </span><span class="k">break</span><span class="p">;</span>
+<span class="w">        </span><span class="kt">size_t</span><span class="w"> </span><span class="n">header_len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">colon</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">current</span><span class="p">;</span>
+<span class="w">        </span><span class="n">memcpy</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="n">header_count</span><span class="p">].</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">current</span><span class="p">,</span><span class="w"> </span><span class="n">header_len</span><span class="p">);</span>
+<span class="w">        </span><span class="n">header</span><span class="p">[</span><span class="n">header_count</span><span class="p">].</span><span class="n">name</span><span class="p">[</span><span class="n">header_len</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sc">'\0'</span><span class="p">;</span>
+<span class="w">        </span><span class="n">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">colon</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">        </span><span class="c1">// value gets copied the same way, up to `end`</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p>The first line is method, path, version, split on the two spaces. Every line after that is a header, split on the colon, until the loop hits the blank line separating headers from the body. Whatever's left in the buffer at that point becomes the body; there's no <code>Content-Length</code> check bounding it yet, it's just "whatever remains."</p>
 <p><code>strchr</code> returns a pointer to the character it finds, so subtracting two pointers gives the exact byte count between them, that's where <code>method_len = first_space - current</code> comes from. <code>memcpy</code> only copies bytes, it doesn't know anything about C strings, so every copied field gets a manually written <code>'\0'</code> right after.</p>
 <p><strong>The bug this shape of code invites:</strong> each line gets null-terminated in place by writing <code>'\0'</code> over the <code>\r</code>. If you then go looking for that same <code>\r</code> again with a fresh <code>strchr()</code> call instead of reusing the <code>end</code> pointer you already have, you won't find it, you already overwrote it. The result isn't a clean crash, it's a bad length calculation from subtracting against whatever <code>strchr</code> finds next, which can be well past the intended field. The fix is exactly what the code above does: compute <code>end</code> once per line, and reuse that same pointer for every length calculation on that line instead of re-deriving it.</p>
 <h2>Building and Serializing the Response</h2>
 <p>Response construction and response serialization are two separate functions. <code>build_response()</code> decides what the response is:</p>
-<pre class="highlight"><code class="language-c">void build_response(Response *response) {
-    strcpy(response-&gt;status, &quot;200 OK&quot;);
-    strcpy(response-&gt;body, &quot;Connection Successful\n&quot;);
-    strcpy(response-&gt;header[0].name, &quot;Server&quot;);
-    strcpy(response-&gt;header[0].value, &quot;SparHTTP&quot;);
-    response-&gt;header_count = 2; // plus Content-Type, set the same way
-}
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="kt">void</span><span class="w"> </span><span class="nf">build_response</span><span class="p">(</span><span class="n">Response</span><span class="w"> </span><span class="o">*</span><span class="n">response</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">strcpy</span><span class="p">(</span><span class="n">response</span><span class="o">-&gt;</span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="s">"200 OK"</span><span class="p">);</span>
+<span class="w">    </span><span class="n">strcpy</span><span class="p">(</span><span class="n">response</span><span class="o">-&gt;</span><span class="n">body</span><span class="p">,</span><span class="w"> </span><span class="s">"Connection Successful</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="w">    </span><span class="n">strcpy</span><span class="p">(</span><span class="n">response</span><span class="o">-&gt;</span><span class="n">header</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="s">"Server"</span><span class="p">);</span>
+<span class="w">    </span><span class="n">strcpy</span><span class="p">(</span><span class="n">response</span><span class="o">-&gt;</span><span class="n">header</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="s">"SparHTTP"</span><span class="p">);</span>
+<span class="w">    </span><span class="n">response</span><span class="o">-&gt;</span><span class="n">header_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span><span class="w"> </span><span class="c1">// plus Content-Type, set the same way</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p><code>serialize_response()</code> decides how that struct becomes actual bytes, <code>HTTP/1.1 200 OK\r\n...</code>, using <code>snprintf</code> to track how much buffer space is left after every write:</p>
-<pre class="highlight"><code class="language-c">int serialize_response(Response *response, char *buffer, size_t buffer_size) {
-    int written = 0;
-    written += snprintf(buffer + written, buffer_size - written,
-        &quot;HTTP/1.1 %s\r\n&quot;, response-&gt;status);
-    // headers loop the same way, then a final snprintf appends &quot;\r\n%s&quot; for the body
-    return written;
-}
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="nf">serialize_response</span><span class="p">(</span><span class="n">Response</span><span class="w"> </span><span class="o">*</span><span class="n">response</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">buffer_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">written</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">written</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">snprintf</span><span class="p">(</span><span class="n">buffer</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">written</span><span class="p">,</span><span class="w"> </span><span class="n">buffer_size</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">written</span><span class="p">,</span>
+<span class="w">        </span><span class="s">"HTTP/1.1 %s</span><span class="se">\r\n</span><span class="s">"</span><span class="p">,</span><span class="w"> </span><span class="n">response</span><span class="o">-&gt;</span><span class="n">status</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// headers loop the same way, then a final snprintf appends "\r\n%s" for the body</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">written</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
 
 <p><code>main.c</code> never touches HTTP syntax directly, it just calls both functions in order.</p>
 <p><strong>The bug that shaped <code>serialize_response</code>'s signature:</strong> an earlier version only took <code>char *buffer</code> as a parameter and used <code>sizeof(buffer)</code> inside the function to work out how much room was left. Inside a function, <code>buffer</code> is a pointer, not the caller's array, so <code>sizeof(buffer)</code> returns the size of the pointer (8 bytes on a 64-bit system), not the actual buffer capacity. The fix is the <code>buffer_size</code> parameter above, passed explicitly by the caller, combined with <code>snprintf</code>'s return value to track exactly how much space is left after every write.</p>
 <p>There's no <code>malloc</code> anywhere in this path. The response is small and its shape is known ahead of time, so a fixed stack buffer covers it without adding a dynamic-memory problem the project doesn't need yet.</p>
 <h2>Why It Only Answers Once</h2>
-<pre class="highlight"><code class="language-c">int client_socket = accept_client(create_server());
-receive_request(client_socket, buffer, sizeof(buffer));
-parse_request(buffer, &amp;http_request, header, &amp;client_msg);
-build_response(&amp;response);
-send(client_socket, servers_response, serialize_response(&amp;response, servers_response, sizeof(servers_response)), 0);
-return 0;
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="kt">int</span><span class="w"> </span><span class="n">client_socket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">accept_client</span><span class="p">(</span><span class="n">create_server</span><span class="p">());</span>
+<span class="n">receive_request</span><span class="p">(</span><span class="n">client_socket</span><span class="p">,</span><span class="w"> </span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">buffer</span><span class="p">));</span>
+<span class="n">parse_request</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">http_request</span><span class="p">,</span><span class="w"> </span><span class="n">header</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">client_msg</span><span class="p">);</span>
+<span class="n">build_response</span><span class="p">(</span><span class="o">&amp;</span><span class="n">response</span><span class="p">);</span>
+<span class="n">send</span><span class="p">(</span><span class="n">client_socket</span><span class="p">,</span><span class="w"> </span><span class="n">servers_response</span><span class="p">,</span><span class="w"> </span><span class="n">serialize_response</span><span class="p">(</span><span class="o">&amp;</span><span class="n">response</span><span class="p">,</span><span class="w"> </span><span class="n">servers_response</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">servers_response</span><span class="p">)),</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</code></pre></div>
 
 <p>That's the entire flow in <code>main.c</code>, and it runs once. There's no loop around <code>accept_client()</code>, so the process handles exactly one connection and exits. Curl it once, get a response; curl it again, "Empty reply from server," because the process is already gone. That's the current boundary, not an oversight: the request/response path needed to be solid before adding a loop and, eventually, real concurrency on top of it.</p>
 <h2>Current Status and Known Items</h2>

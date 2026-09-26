@@ -21,7 +21,6 @@
   <h1 class="article-title">Why I Built gatevault and What Packaging for PyPI Taught Me</h1>
   <p class="article-summary">Most auth libraries do one thing. I kept solving the same auth problem across projects, so I packaged the solution.</p>
   <div class="article-body">
-<h1>Why I Built gatevault and What Packaging for PyPI Taught Me</h1>
 <h2>The Problem I Kept Solving</h2>
 <p>Every backend project needs auth. Hash a password, verify credentials, create access and refresh tokens, protect routes, decode token payloads, raise useful errors. I was writing these same patterns in every project. FastAPI apps, Flask apps, scripts that needed OAuth2. Each time I would grab PyJWT for encoding, bcrypt for hashing, and then wire the whole flow together myself.</p>
 <p>Most Python auth libraries do one thing well. PyJWT gives you JWT encoding. bcrypt gives you password hashing. But you still have to write the login flow, build the guards, handle the exceptions, and repeat that boilerplate across every project. The integration work between these libraries was the real problem, and I could not find a framework-agnostic solution that matched how I wanted to build applications.</p>
@@ -51,94 +50,94 @@
 <p>Keeping these concerns separate allows applications to adopt gatevault without being forced into a specific data model or architecture.</p>
 <h2>The API I Wanted</h2>
 <p>Here is what I was aiming for:</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">GateVault</span>
 
-tm = TokenManager(
-    secret_key=SECRET,
-    access_expiry_minutes=15,
-    refresh_expiry_days=7
-)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span>
+    <span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span>
+    <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+    <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span>
+<span class="p">)</span>
 
-gate = GateVault(token_manager=tm)
+<span class="n">gate</span> <span class="o">=</span> <span class="n">GateVault</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">)</span>
 
-@gate.protected
-def get_profile(payload=None):
-    return db.get_user(payload[&quot;user_id&quot;])
-</code></pre>
+<span class="nd">@gate</span><span class="o">.</span><span class="n">protected</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_profile</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">get_user</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
+</code></pre></div>
 
 <p>One import, one instance, one decorator. The token payload gets injected directly into your function. No middleware configuration, no request object parsing, no framework-specific dependency injection. If you want the raw tokens, you can call <code>tm.create_access_token(user_id)</code> and <code>tm.create_refresh_token(user_id)</code> directly. If you just want hashing, import <code>hash_password</code> and <code>verify_password</code> as standalone functions. The library works as a whole or in parts.</p>
 <p>User IDs are flexible. The library supports <code>int</code>, <code>str</code>, and <code>UUID</code> out of the box through a <code>normalize_user_id</code> function that runs before encoding. If your app uses something custom, you can pass your own encoder callable to <code>TokenManager</code>:</p>
-<pre class="highlight"><code class="language-python">from uuid import UUID
-from gatevault import TokenManager
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">uuid</span><span class="w"> </span><span class="kn">import</span> <span class="n">UUID</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 
-tm.create_access_token(user_id=1)                    # int
-tm.create_access_token(user_id=&quot;user-abc-123&quot;)       # str
-tm.create_access_token(user_id=UUID(&quot;a1b2c3d4-...&quot;)) # UUID, serialized to str automatically
-</code></pre>
+<span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>                    <span class="c1"># int</span>
+<span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="s2">"user-abc-123"</span><span class="p">)</span>       <span class="c1"># str</span>
+<span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="n">UUID</span><span class="p">(</span><span class="s2">"a1b2c3d4-..."</span><span class="p">))</span> <span class="c1"># UUID, serialized to str automatically</span>
+</code></pre></div>
 
 <p>Extra claims go through <code>**kwargs</code> and end up in the decoded payload. This lets you attach role, org, or permission data without any extra configuration:</p>
-<pre class="highlight"><code class="language-python">access = tm.create_access_token(user_id=42, role=&quot;admin&quot;, org_id=&quot;richard-corp&quot;)
+<div class="highlight"><pre><span></span><code><span class="n">access</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">create_access_token</span><span class="p">(</span><span class="n">user_id</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"admin"</span><span class="p">,</span> <span class="n">org_id</span><span class="o">=</span><span class="s2">"richard-corp"</span><span class="p">)</span>
 
-payload = tm.decode_token(access)
-print(payload[&quot;role&quot;])     # admin
-print(payload[&quot;org_id&quot;])  # richard-corp
-</code></pre>
+<span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">access</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"role"</span><span class="p">])</span>     <span class="c1"># admin</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"org_id"</span><span class="p">])</span>  <span class="c1"># richard-corp</span>
+</code></pre></div>
 
 <p>The standalone hashing API is intentionally simple. Two functions, no classes to instantiate:</p>
-<pre class="highlight"><code class="language-python">from gatevault import hash_password, verify_password
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">hash_password</span><span class="p">,</span> <span class="n">verify_password</span>
 
-hashed = hash_password(&quot;user_password_123&quot;)
-# $2b$12$examplebcrypthash...
+<span class="n">hashed</span> <span class="o">=</span> <span class="n">hash_password</span><span class="p">(</span><span class="s2">"user_password_123"</span><span class="p">)</span>
+<span class="c1"># $2b$12$examplebcrypthash...</span>
 
-is_valid = verify_password(&quot;user_password_123&quot;, hashed)   # True
-is_valid = verify_password(&quot;wrong_password&quot;, hashed)       # False
-</code></pre>
+<span class="n">is_valid</span> <span class="o">=</span> <span class="n">verify_password</span><span class="p">(</span><span class="s2">"user_password_123"</span><span class="p">,</span> <span class="n">hashed</span><span class="p">)</span>   <span class="c1"># True</span>
+<span class="n">is_valid</span> <span class="o">=</span> <span class="n">verify_password</span><span class="p">(</span><span class="s2">"wrong_password"</span><span class="p">,</span> <span class="n">hashed</span><span class="p">)</span>       <span class="c1"># False</span>
+</code></pre></div>
 
 <p>Salt is generated and embedded automatically by bcrypt. You store the full hash string in your database. When verifying, bcrypt extracts the salt from the stored hash and uses it to re-hash the input. There is no separate salt column and no way to accidentally hash without one. If anything goes wrong internally, it raises a <code>HashingError</code> instead of a raw bcrypt exception.</p>
 <p>For the full login flow, <code>OAuthHandler</code> wires together user lookup, password verification, and token generation in one call. You provide a <code>get_user</code> callable that returns an object with <code>id</code> and <code>hashed_password</code> attributes:</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, OAuthHandler
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">OAuthHandler</span>
 
-tm = TokenManager(secret_key=SECRET, access_expiry_minutes=15, refresh_expiry_days=7)
+<span class="n">tm</span> <span class="o">=</span> <span class="n">TokenManager</span><span class="p">(</span><span class="n">secret_key</span><span class="o">=</span><span class="n">SECRET</span><span class="p">,</span> <span class="n">access_expiry_minutes</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="n">refresh_expiry_days</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 
-# Sync user lookup
-def get_user_from_db(username: str):
-    return db.execute(&quot;SELECT id, hashed_password FROM users WHERE email = ?&quot;, (username,)).fetchone()
+<span class="c1"># Sync user lookup</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_user_from_db</span><span class="p">(</span><span class="n">username</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT id, hashed_password FROM users WHERE email = ?"</span><span class="p">,</span> <span class="p">(</span><span class="n">username</span><span class="p">,))</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user_from_db)
-tokens = handler.login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
-# {&quot;access_token&quot;: &quot;eyJ...&quot;, &quot;refresh_token&quot;: &quot;eyJ...&quot;, &quot;token_type&quot;: &quot;bearer&quot;}
-</code></pre>
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user_from_db</span><span class="p">)</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="n">handler</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="s2">"john@example.com"</span><span class="p">,</span> <span class="s2">"mypassword"</span><span class="p">)</span>
+<span class="c1"># {"access_token": "eyJ...", "refresh_token": "eyJ...", "token_type": "bearer"}</span>
+</code></pre></div>
 
 <p>For async codebases, use <code>async_login</code> with an async <code>get_user</code>:</p>
-<pre class="highlight"><code class="language-python">async def get_user(username: str):
-    result = await db.execute(select(User).where(User.email == username))
-    return result.scalar_one_or_none()
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user</span><span class="p">(</span><span class="n">username</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">select</span><span class="p">(</span><span class="n">User</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">User</span><span class="o">.</span><span class="n">email</span> <span class="o">==</span> <span class="n">username</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">scalar_one_or_none</span><span class="p">()</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user)
-tokens = await handler.async_login(&quot;john@example.com&quot;, &quot;mypassword&quot;)
-</code></pre>
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user</span><span class="p">)</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="k">await</span> <span class="n">handler</span><span class="o">.</span><span class="n">async_login</span><span class="p">(</span><span class="s2">"john@example.com"</span><span class="p">,</span> <span class="s2">"mypassword"</span><span class="p">)</span>
+</code></pre></div>
 
 <p>Three distinct exceptions cover every login failure. <code>InvalidCredentialsError</code> when no user is found, <code>UnauthorizedError</code> when the password does not match, <code>GuardError</code> when token creation fails (for example, if the user ID is an unsupported type).</p>
 <p>The decorator works with both sync and async functions. It inspects the function and returns the appropriate wrapper automatically, so you do not have to think about it:</p>
-<pre class="highlight"><code class="language-python">from gatevault import TokenManager, GateVault
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">TokenManager</span><span class="p">,</span> <span class="n">GateVault</span>
 
-gate = GateVault(token_manager=tm)
+<span class="n">gate</span> <span class="o">=</span> <span class="n">GateVault</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">)</span>
 
-# Sync
-@gate.protected
-def get_orders(payload=None):
-    return db.get_orders(payload[&quot;user_id&quot;])
+<span class="c1"># Sync</span>
+<span class="nd">@gate</span><span class="o">.</span><span class="n">protected</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_orders</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">get_orders</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
 
-# Async
-@gate.protected
-async def get_orders_async(payload=None):
-    return await db.fetch_orders(payload[&quot;user_id&quot;])
+<span class="c1"># Async</span>
+<span class="nd">@gate</span><span class="o">.</span><span class="n">protected</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_orders_async</span><span class="p">(</span><span class="n">payload</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">return</span> <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">fetch_orders</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">"user_id"</span><span class="p">])</span>
 
-# Call either by passing the token kwarg
-get_orders(token=&quot;eyJhbGci...&quot;)
-</code></pre>
+<span class="c1"># Call either by passing the token kwarg</span>
+<span class="n">get_orders</span><span class="p">(</span><span class="n">token</span><span class="o">=</span><span class="s2">"eyJhbGci..."</span><span class="p">)</span>
+</code></pre></div>
 
 <p>The decorator extracts the token from the <code>token</code> keyword argument. This is deliberate. gatevault does not parse framework-specific request objects. The caller pulls the token out of the <code>Authorization</code> header or cookie in their framework, then passes it in. This keeps the library honest and framework-free.</p>
 <h2>Token Refresh and Rotation</h2>
@@ -150,35 +149,35 @@ get_orders(token=&quot;eyJhbGci...&quot;)
 <p>Access tokens are intentionally short-lived. Refresh tokens allow applications to obtain new access tokens without requiring users to authenticate again.</p>
 <p>JWT access tokens are stateless by design, meaning they cannot be individually revoked after issuance without external state.</p>
 <p>gatevault therefore gives you a safe rotation primitive but leaves persistence, family tracking, and revocation decisions to the consuming application. <code>OAuthHandler.async_refresh</code> handles the exchange. What you build around it is yours:</p>
-<pre class="highlight"><code class="language-python">from gatevault import OAuthHandler, TokenExpiredError, InvalidTokenError, InvalidCredentialsError
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="n">OAuthHandler</span><span class="p">,</span> <span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">InvalidCredentialsError</span>
 
-handler = OAuthHandler(token_manager=tm, get_user=get_user, get_user_by_id=get_user_by_id)
+<span class="n">handler</span> <span class="o">=</span> <span class="n">OAuthHandler</span><span class="p">(</span><span class="n">token_manager</span><span class="o">=</span><span class="n">tm</span><span class="p">,</span> <span class="n">get_user</span><span class="o">=</span><span class="n">get_user</span><span class="p">,</span> <span class="n">get_user_by_id</span><span class="o">=</span><span class="n">get_user_by_id</span><span class="p">)</span>
 
-async def refresh_route(refresh_token: str) -&gt; dict:
-    try:
-        return await handler.async_refresh(refresh_token)
-    except (TokenExpiredError, InvalidTokenError, InvalidCredentialsError):
-        raise ValueError(&quot;Invalid or expired refresh token&quot;)
-</code></pre>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">refresh_route</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">handler</span><span class="o">.</span><span class="n">async_refresh</span><span class="p">(</span><span class="n">refresh_token</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">TokenExpiredError</span><span class="p">,</span> <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">InvalidCredentialsError</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Invalid or expired refresh token"</span><span class="p">)</span>
+</code></pre></div>
 
 <p><code>get_user_by_id</code> is optional. Pass it if you want a deleted or deactivated account rejected before a new pair goes out. Leave it out and <code>async_refresh</code> trusts the <code>user_id</code> already signed into the token, no extra database call.</p>
 <p>Applications that require reuse detection or immediate invalidation still need to store refresh token identifiers externally and enforce their own family or blocklist policy on top of what <code>async_refresh</code> gives you.</p>
 <h2>What I Learned Packaging for PyPI</h2>
 <h3>pyproject.toml is the Standard Now</h3>
 <p>I started with <code>setup.py</code> out of habit, then moved everything to <code>pyproject.toml</code> with <code>hatchling</code> as the build backend. It is cleaner. Dependencies, build system, metadata, and entry points all live in one file. If you are starting a new package today, skip <code>setup.py</code> entirely.</p>
-<pre class="highlight"><code class="language-toml">[build-system]
-requires = [&quot;hatchling&quot;]
-build-backend = &quot;hatchling.build&quot;
+<div class="highlight"><pre><span></span><code><span class="k">[build-system]</span>
+<span class="n">requires</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"hatchling"</span><span class="p">]</span>
+<span class="n">build-backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"hatchling.build"</span>
 
-[tool.hatch.build.targets.wheel]
-packages = [&quot;src/gatevault&quot;]
+<span class="k">[tool.hatch.build.targets.wheel]</span>
+<span class="n">packages</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"src/gatevault"</span><span class="p">]</span>
 
-[project]
-name = &quot;richard-gatevault&quot;
-version = &quot;1.1.0&quot;
-requires-python = &quot;&gt;=3.9&quot;
-dependencies = [&quot;PyJWT&quot;, &quot;bcrypt&quot;]
-</code></pre>
+<span class="k">[project]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"richard-gatevault"</span>
+<span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"1.1.0"</span>
+<span class="n">requires-python</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"&gt;=3.9"</span>
+<span class="n">dependencies</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"PyJWT"</span><span class="p">,</span><span class="w"> </span><span class="s2">"bcrypt"</span><span class="p">]</span>
+</code></pre></div>
 
 <p>The <code>src</code> layout with <code>packages = ["src/gatevault"]</code> prevents accidental imports of the local directory instead of the installed package during development. Python finds packages on the path, and without the <code>src/</code> directory, the local uninstalled code can shadow the pip-installed version. Small detail, saves debugging time.</p>
 <h3>Dependency Management is a Design Decision</h3>
@@ -203,29 +202,29 @@ dependencies = [&quot;PyJWT&quot;, &quot;bcrypt&quot;]
 </li>
 </ul>
 <p>Now callers can catch <code>GatevaultError</code> broadly or handle specific cases. The internal PyJWT exceptions are still raised under the hood, but they never escape the package boundary. This is important for library design: your users should never need to import your dependencies to handle your errors.</p>
-<pre class="highlight"><code class="language-python">from gatevault import (
-    GatevaultError, TokenExpiredError,
-    InvalidTokenError, GuardError,
-    HashingError, InvalidCredentialsError,
-    UnauthorizedError
-)
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">gatevault</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">GatevaultError</span><span class="p">,</span> <span class="n">TokenExpiredError</span><span class="p">,</span>
+    <span class="n">InvalidTokenError</span><span class="p">,</span> <span class="n">GuardError</span><span class="p">,</span>
+    <span class="n">HashingError</span><span class="p">,</span> <span class="n">InvalidCredentialsError</span><span class="p">,</span>
+    <span class="n">UnauthorizedError</span>
+<span class="p">)</span>
 
-# Broad catch-all
-try:
-    payload = tm.decode_token(token)
-except GatevaultError as e:
-    return {&quot;error&quot;: str(e)}
+<span class="c1"># Broad catch-all</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">decode_token</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">GatevaultError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span>
 
-# Granular handling for login failures
-try:
-    tokens = handler.login(email, password)
-except InvalidCredentialsError:
-    return {&quot;error&quot;: &quot;No account found&quot;}
-except UnauthorizedError:
-    return {&quot;error&quot;: &quot;Wrong password&quot;}
-except GuardError as e:
-    return {&quot;error&quot;: f&quot;Auth error: {e}&quot;}
-</code></pre>
+<span class="c1"># Granular handling for login failures</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">tokens</span> <span class="o">=</span> <span class="n">handler</span><span class="o">.</span><span class="n">login</span><span class="p">(</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">InvalidCredentialsError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"No account found"</span><span class="p">}</span>
+<span class="k">except</span> <span class="n">UnauthorizedError</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Wrong password"</span><span class="p">}</span>
+<span class="k">except</span> <span class="n">GuardError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"error"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Auth error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">}</span>
+</code></pre></div>
 
 <h3>Testing a Library is Different from Testing an App</h3>
 <p>With an application, you test endpoints and flows. With a library, you test contracts. Every public function has specific input/output behavior that callers depend on. I wrote a full pytest suite covering:</p>

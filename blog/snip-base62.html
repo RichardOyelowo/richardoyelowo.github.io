@@ -21,7 +21,6 @@
   <h1 class="article-title">Collision-Free URL Shortening with PostgreSQL Sequences and Base62</h1>
   <p class="article-summary">How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The flush bug that only appeared under load.</p>
   <div class="article-body">
-<h1>Collision-Free URL Shortening with PostgreSQL Sequences and Base62</h1>
 <h2>Why Not Just Use UUIDs?</h2>
 <p>Most URL shorteners either generate random short codes and check for collisions with retry loops, or use UUIDs truncated to some length. Both approaches have problems.</p>
 <p>Random generation with retry loops means you are doing extra database queries on every write. Under concurrent load, two requests can both check "is this code taken?", both get "no", and both try to insert, causing one to fail and retry. This is a classic TOCTOU (time-of-check-time-of-use) race condition. The retry loop masks the problem but does not fix it. Under high concurrency, the retry count increases and the latency spikes.</p>
@@ -31,20 +30,20 @@
 <p>The idea is simple. Use an auto-incrementing integer as the primary key, then encode that integer in Base62. The result is your short code.</p>
 <p>Base62 uses the characters <code>0-9a-zA-Z</code>, giving 62 possible values per character. A 7-character Base62 string can represent 62 to the power of 7, which is roughly 3.5 trillion unique values. The first URL gets code <code>1</code>, the second <code>2</code>, and so on. Since the counter only goes up, collisions are impossible by definition.</p>
 <p>The database model reflects this design:</p>
-<pre class="highlight"><code class="language-python">class Link(Base):
-    id = mapped_column(primary_key=True)
-    original_url = mapped_column(String)
-    short_code = mapped_column(String, unique=True)
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Link</span><span class="p">(</span><span class="n">Base</span><span class="p">):</span>
+    <span class="nb">id</span> <span class="o">=</span> <span class="n">mapped_column</span><span class="p">(</span><span class="n">primary_key</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">original_url</span> <span class="o">=</span> <span class="n">mapped_column</span><span class="p">(</span><span class="n">String</span><span class="p">)</span>
+    <span class="n">short_code</span> <span class="o">=</span> <span class="n">mapped_column</span><span class="p">(</span><span class="n">String</span><span class="p">,</span> <span class="n">unique</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
 
 <p>The unique=True constraint is still valuable as a final database guarantee, but collisions are not expected because the value is derived from the primary key sequence.</p>
 <p>The id column is the source of uniqueness. PostgreSQL assigns it through its sequence generator, and that value becomes the input to the Base62 encoder:</p>
-<pre class="highlight"><code>Database ID → Base62 encoding → Short code
+<div class="highlight"><pre><span></span><code>Database ID → Base62 encoding → Short code
 
-1          → &quot;1&quot;
-1000       → &quot;g8&quot;
-123456789  → &quot;8M0kL&quot;
-</code></pre>
+1          → "1"
+1000       → "g8"
+123456789  → "8M0kL"
+</code></pre></div>
 
 <p>The critical part is the counter. In PostgreSQL, an auto-incrementing primary key gives you this guarantee at the database level. The sequence generator handles concurrency. PostgreSQL assigns sequence values atomically, so concurrent inserts receive distinct IDs.</p>
 <p>The encoding function is pure math, no state, no side effects, no database calls. It runs in O(log n) time where n is the counter value. A counter value of 123 million encodes to a 5-character string.</p>
@@ -52,29 +51,29 @@
 <p>This is where the integration tests proved their worth. I wrote a test suite that simulates concurrent URL shortening requests. Without these tests, everything passed in normal sequential testing.</p>
 <p>The bug was in how I was reading the counter back after insert. In async SQLAlchemy, if you do not <code>await</code> the session flush before reading the auto-generated ID, you can get <code>None</code> back or a stale cached value. Under sequential testing this almost never triggers because the session has time to sync. Under concurrent load with connection pooling, it triggers regularly.</p>
 <p>The fix was explicitly flushing the session after insert and before encoding. Here is the actual create route in Snip:</p>
-<pre class="highlight"><code class="language-python"># app/routers/links.py
-@router.post(&quot;/links/&quot;)
-async def create_link(request: Request, link: Annotated[LinkCreate, Form()], db: SessionDep):
-    link.original_url = str(link.original_url)
+<div class="highlight"><pre><span></span><code><span class="c1"># app/routers/links.py</span>
+<span class="nd">@router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/links/"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_link</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">,</span> <span class="n">link</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="n">LinkCreate</span><span class="p">,</span> <span class="n">Form</span><span class="p">()],</span> <span class="n">db</span><span class="p">:</span> <span class="n">SessionDep</span><span class="p">):</span>
+    <span class="n">link</span><span class="o">.</span><span class="n">original_url</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">link</span><span class="o">.</span><span class="n">original_url</span><span class="p">)</span>
 
-    # Duplicate detection: return existing short link if URL was already shortened
-    results = await db.execute(select(Link).where(Link.original_url == link.original_url))
-    existing = results.scalars().first()
+    <span class="c1"># Duplicate detection: return existing short link if URL was already shortened</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">select</span><span class="p">(</span><span class="n">Link</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">Link</span><span class="o">.</span><span class="n">original_url</span> <span class="o">==</span> <span class="n">link</span><span class="o">.</span><span class="n">original_url</span><span class="p">))</span>
+    <span class="n">existing</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">scalars</span><span class="p">()</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
 
-    if existing:
-        short_link = f&quot;{request.base_url}{existing.short_code}&quot;
-        return templates.TemplateResponse(request=request, name=&quot;result.html&quot;, context={&quot;link&quot;: short_link})
+    <span class="k">if</span> <span class="n">existing</span><span class="p">:</span>
+        <span class="n">short_link</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">base_url</span><span class="si">}{</span><span class="n">existing</span><span class="o">.</span><span class="n">short_code</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">return</span> <span class="n">templates</span><span class="o">.</span><span class="n">TemplateResponse</span><span class="p">(</span><span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"result.html"</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="p">{</span><span class="s2">"link"</span><span class="p">:</span> <span class="n">short_link</span><span class="p">})</span>
 
-    new_link = Link(original_url=link.original_url)
-    db.add(new_link)
-    await db.flush()  # forces PostgreSQL to assign the ID
+    <span class="n">new_link</span> <span class="o">=</span> <span class="n">Link</span><span class="p">(</span><span class="n">original_url</span><span class="o">=</span><span class="n">link</span><span class="o">.</span><span class="n">original_url</span><span class="p">)</span>
+    <span class="n">db</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">new_link</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>  <span class="c1"># forces PostgreSQL to assign the ID</span>
 
-    new_link.short_code = convert_to_shortcode(new_link.id)
-    await db.commit()
+    <span class="n">new_link</span><span class="o">.</span><span class="n">short_code</span> <span class="o">=</span> <span class="n">convert_to_shortcode</span><span class="p">(</span><span class="n">new_link</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">db</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>
 
-    short_link = f&quot;{request.base_url}{new_link.short_code}&quot;
-    return templates.TemplateResponse(request=request, name=&quot;result.html&quot;, context={&quot;link&quot;: short_link})
-</code></pre>
+    <span class="n">short_link</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">base_url</span><span class="si">}{</span><span class="n">new_link</span><span class="o">.</span><span class="n">short_code</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="n">templates</span><span class="o">.</span><span class="n">TemplateResponse</span><span class="p">(</span><span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"result.html"</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="p">{</span><span class="s2">"link"</span><span class="p">:</span> <span class="n">short_link</span><span class="p">})</span>
+</code></pre></div>
 
 <p>The <code>await db.flush()</code> call is the key line. It sends the INSERT to PostgreSQL and gets back the auto-generated ID, all without committing the transaction. The short code is then computed from that ID and set on the model before the commit. This guarantees the short code is always correct, even under concurrent load.</p>
 <p>Duplicate URL detection is a SELECT query before insert. If the same long URL was already shortened, the existing short code is returned directly. This keeps the database clean and means all clicks on the same long URL are tracked under one short link. The duplicate check is an optimization, not the uniqueness guarantee. In production, the database constraint remains the final authority if two identical submissions arrive concurrently.</p>

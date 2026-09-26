@@ -21,7 +21,6 @@
   <h1 class="article-title">Designing RBAC with Independent Org and Team Roles</h1>
   <p class="article-summary">Clustra's hierarchy: Org, Team, Project, Task. Membership layering, cascade deletes, and centralized permission checks.</p>
   <div class="article-body">
-<h1>Designing RBAC with Independent Org and Team Roles</h1>
 <h2>What Clustra Is</h2>
 <p>Clustra is a multi-organization work management API with a vanilla JavaScript frontend. Think of it as a self-hosted alternative to the backend of Linear or Jira. The hierarchy is Org, then Team, then Project, then Task. Labels and milestones belong to projects. Activity is logged at the org level and covers every model type. Users can be members of multiple orgs, and within each org they can be members of multiple teams. Every layer has its own role-based access control.</p>
 <p>The RBAC system is the foundation that everything else builds on. Getting the hierarchy, membership layering, and role separation right before adding more features was the most important architectural decision in this project. This post covers the design decisions that shaped the architecture, the edge cases I hit, and how I resolved them.</p>
@@ -40,19 +39,19 @@
 Team roles: Lead, Contributor, Viewer</p>
 <p>A user can be an Org Admin but a Viewer on a specific team. Or an Org Member but a Team Lead. The roles answer different questions. The org role determines what the user can do at the organization level: create teams, manage org settings, invite members. The team role determines what the user can do within that specific team: create projects, manage tasks, update milestones.</p>
 <p>Role checks happen at the service layer, not scattered across route handlers. I have centralized permission utility functions that take the user, the resource, and the required action, then return whether the action is allowed. This makes the permission logic auditable in one place instead of distributed across 30+ endpoints.</p>
-<pre class="highlight"><code class="language-python"># Centralized permission check
-def check_org_permission(user, org, action):
-    role = get_org_role(user.id, org.id)
-    return PERMISSIONS.ORG[action].get(role, False)
+<div class="highlight"><pre><span></span><code><span class="c1"># Centralized permission check</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_org_permission</span><span class="p">(</span><span class="n">user</span><span class="p">,</span> <span class="n">org</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+    <span class="n">role</span> <span class="o">=</span> <span class="n">get_org_role</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">org</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">PERMISSIONS</span><span class="o">.</span><span class="n">ORG</span><span class="p">[</span><span class="n">action</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">role</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
 
-def check_team_permission(user, team, action):
-    org_role = get_org_role(user.id, team.org_id)
-    team_role = get_team_role(user.id, team.id)
-    # Admins bypass team membership checks on read-only routes
-    if org_role in ('owner', 'admin') and action in READ_ACTIONS:
-        return True
-    return PERMISSIONS.TEAM[action].get(team_role, False)
-</code></pre>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_team_permission</span><span class="p">(</span><span class="n">user</span><span class="p">,</span> <span class="n">team</span><span class="p">,</span> <span class="n">action</span><span class="p">):</span>
+    <span class="n">org_role</span> <span class="o">=</span> <span class="n">get_org_role</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">team</span><span class="o">.</span><span class="n">org_id</span><span class="p">)</span>
+    <span class="n">team_role</span> <span class="o">=</span> <span class="n">get_team_role</span><span class="p">(</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">team</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+    <span class="c1"># Admins bypass team membership checks on read-only routes</span>
+    <span class="k">if</span> <span class="n">org_role</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">'owner'</span><span class="p">,</span> <span class="s1">'admin'</span><span class="p">)</span> <span class="ow">and</span> <span class="n">action</span> <span class="ow">in</span> <span class="n">READ_ACTIONS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="n">PERMISSIONS</span><span class="o">.</span><span class="n">TEAM</span><span class="p">[</span><span class="n">action</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">team_role</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
 
 <p>Org admins bypass team membership checks on read-only routes because Org administrators are responsible for organization-wide oversight. They can read all team resources without joining every team, but must still join a team to perform write operations. This means an admin can view any team's projects and tasks without being an explicit team member, which is useful for oversight. But write operations (creating tasks, updating milestones) still require team membership with an appropriate role. This distinction between read and write access for admins was a deliberate choice to give oversight capability without giving unchecked power.</p>
 <h2>Automatic Team Lead Assignment</h2>
@@ -62,22 +61,22 @@ def check_team_permission(user, team, action):
 <p>Every create, update, and delete in Clustra logs an activity entry. The design decision here was about when to commit.</p>
 <p>The wrong approach: commit the activity log entry separately from the main operation. If the main operation succeeds but the log write fails, you have an operation with no audit trail. If the log write succeeds but the main operation fails, you have a phantom activity entry describing something that did not happen.</p>
 <p>The correct approach: use <code>db.flush()</code> at the point of logging, which sends the INSERT to the database but does not commit allowing generated IDs to be available for the activity record, then commit everything together at the end of the service method. This keeps the activity log and the operation it describes in the same transaction. If either fails, both are rolled back.</p>
-<pre class="highlight"><code class="language-python">async def create_task(session, user, project, task_data):
-    task = Task(project_id=project.id, created_by=user.id, **task_data)
-    session.add(task)
-    await session.flush()  # assigns task.id
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_task</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">project</span><span class="p">,</span> <span class="n">task_data</span><span class="p">):</span>
+    <span class="n">task</span> <span class="o">=</span> <span class="n">Task</span><span class="p">(</span><span class="n">project_id</span><span class="o">=</span><span class="n">project</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">created_by</span><span class="o">=</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="o">**</span><span class="n">task_data</span><span class="p">)</span>
+    <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+    <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>  <span class="c1"># assigns task.id</span>
 
-    activity = Activity(
-        org_id=project.org_id,
-        user_id=user.id,
-        action='create',
-        model_type='task',
-        model_id=task.id
-    )
-    session.add(activity)
+    <span class="n">activity</span> <span class="o">=</span> <span class="n">Activity</span><span class="p">(</span>
+        <span class="n">org_id</span><span class="o">=</span><span class="n">project</span><span class="o">.</span><span class="n">org_id</span><span class="p">,</span>
+        <span class="n">user_id</span><span class="o">=</span><span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s1">'create'</span><span class="p">,</span>
+        <span class="n">model_type</span><span class="o">=</span><span class="s1">'task'</span><span class="p">,</span>
+        <span class="n">model_id</span><span class="o">=</span><span class="n">task</span><span class="o">.</span><span class="n">id</span>
+    <span class="p">)</span>
+    <span class="n">session</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">activity</span><span class="p">)</span>
 
-    await session.commit()  # both task and activity committed together
-</code></pre>
+    <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">commit</span><span class="p">()</span>  <span class="c1"># both task and activity committed together</span>
+</code></pre></div>
 
 <p>This pattern is used consistently across every write operation in Clustra. The flush-then-commit approach means the activity entry gets the correct model_id (because flush assigns the auto-generated ID) while staying in the same transaction as the operation.</p>
 <h2>Cascade Deletes: The Subtle Part</h2>
@@ -90,16 +89,16 @@ def check_team_permission(user, team, action):
 <h2>Cross-Tenant Isolation</h2>
 <p>Every database query in Clustra is constructed with the authenticated user's ID as a hard filter at the ORM level. This is the same principle I used in Business Dashboard, but applied to a more complex hierarchy.</p>
 <p>Listing tasks does not just filter by project. It filters by org membership, then by team membership, then by project:</p>
-<pre class="highlight"><code class="language-python">async def list_tasks(session, user, project_id):
-    # Verify user has access to this project's org
-    await verify_org_membership(session, user.id, project.org_id)
-    # Verify user has access to this project's team
-    await verify_team_membership(session, user.id, project.team_id)
-    # Now query tasks
-    return await session.scalars(
-        select(Task).where(Task.project_id == project_id)
-    )
-</code></pre>
+<div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">list_tasks</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">user</span><span class="p">,</span> <span class="n">project_id</span><span class="p">):</span>
+    <span class="c1"># Verify user has access to this project's org</span>
+    <span class="k">await</span> <span class="n">verify_org_membership</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">project</span><span class="o">.</span><span class="n">org_id</span><span class="p">)</span>
+    <span class="c1"># Verify user has access to this project's team</span>
+    <span class="k">await</span> <span class="n">verify_team_membership</span><span class="p">(</span><span class="n">session</span><span class="p">,</span> <span class="n">user</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="n">project</span><span class="o">.</span><span class="n">team_id</span><span class="p">)</span>
+    <span class="c1"># Now query tasks</span>
+    <span class="k">return</span> <span class="k">await</span> <span class="n">session</span><span class="o">.</span><span class="n">scalars</span><span class="p">(</span>
+        <span class="n">select</span><span class="p">(</span><span class="n">Task</span><span class="p">)</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">Task</span><span class="o">.</span><span class="n">project_id</span> <span class="o">==</span> <span class="n">project_id</span><span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div>
 
 <p>Controller-level checks alone were considered insufficient. The filter exists at the query level regardless of what the route handler does. The service layer enforces membership verification before executing queries, making it much harder for new endpoints to accidentally bypass tenant isolation. The verification functions are called at the service layer before any data access happens.</p>
 <h2>Current Status and Known Items</h2>
