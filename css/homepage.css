@@ -182,7 +182,7 @@
    ============================================================ */
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   gap: 16px;
 }
 .project-card {
@@ -234,7 +234,7 @@
    ============================================================ */
 .blog-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 16px;
   min-height: 0;
 }
@@ -273,7 +273,7 @@
    ============================================================ */
 .stack-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 16px;
 }
 .stack-group {
@@ -307,7 +307,7 @@
 .contact-intro strong { color: var(--amber); font-weight: 500; }
 .contact-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   gap: 16px;
 }
 .contact-item {
