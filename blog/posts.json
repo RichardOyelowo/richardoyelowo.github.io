@@ -20,7 +20,7 @@
     "title": "Why I Built gatevault and What Packaging for PyPI Taught Me",
     "date": "2026-07-21",
     "summary": "Most auth libraries do one thing. I kept solving the same auth problem across projects, so I packaged the solution.",
-    "pinned": true,
+    "pinned": false,
     "url": "./gatevault.html"
   },
   {
@@ -38,5 +38,13 @@
     "summary": "How Snip generates unique short codes without UUIDs, retry loops, or database-level locking. The flush bug that only appeared under load.",
     "pinned": false,
     "url": "./snip-base62.html"
+  },
+  {
+    "slug": "sparhttp",
+    "title": "Why I Built SparHTTP and What Writing a Server in C Taught Me",
+    "date": "2024-09-25",
+    "summary": "High-level frameworks hide the network. I wanted to see exactly what happens when a request hits a server, so I built one from scratch in C.",
+    "pinned": false,
+    "url": "./sparhttp.html"
   }
 ]
