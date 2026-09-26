@@ -16,48 +16,55 @@ article {
   line-height: 1.15; margin-bottom: 14px;
 }
 .article-summary {
-  font-size: 0.8rem; color: var(--text-mid); line-height: 1.9;
+  font-size: 0.92rem; color: var(--text); line-height: 1.8;
   margin-bottom: 36px; padding-bottom: 36px; border-bottom: 1px solid var(--border);
 }
 
 /* MARKDOWN CONTENT */
 .article-body h2 {
-  font-family: 'Fraunces', serif; font-size: 1.3rem; font-weight: 600;
+  font-family: 'Fraunces', serif; font-size: 1.5rem; font-weight: 600;
   color: var(--white); letter-spacing: -0.5px;
-  margin-top: 36px; margin-bottom: 12px; line-height: 1.2;
+  margin-top: 64px; margin-bottom: 16px; line-height: 1.2;
+  padding-top: 28px; border-top: 1px solid var(--border);
 }
+.article-body > h2:first-child { margin-top: 0; padding-top: 0; border-top: none; }
 .article-body h3 {
-  font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 600;
-  color: var(--amber); margin-top: 28px; margin-bottom: 8px;
+  font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 600;
+  color: var(--amber-bright); margin-top: 32px; margin-bottom: 10px;
 }
 .article-body p {
-  font-size: 0.8rem; color: var(--text-mid); line-height: 2; margin-bottom: 16px;
+  font-size: 0.95rem; color: var(--text-mid); line-height: 1.85; margin-bottom: 20px;
+}
+.article-body > p:first-of-type {
+  font-size: 1.05rem; color: var(--text);
 }
 .article-body strong { color: var(--white); font-weight: 500; }
 .article-body em { color: var(--text); font-style: italic; }
 .article-body a {
-  color: var(--amber); text-decoration: none;
+  color: var(--amber-bright); text-decoration: none;
   border-bottom: 1px solid var(--amber-dim); transition: color 0.2s;
 }
 .article-body a:hover { color: var(--amber-bright); }
 
 .article-body ul, .article-body ol {
-  margin-bottom: 16px; padding-left: 20px;
+  margin-bottom: 20px; padding-left: 22px;
 }
 .article-body li {
-  font-size: 0.8rem; color: var(--text-mid); line-height: 2; margin-bottom: 5px;
+  font-size: 0.95rem; color: var(--text-mid); line-height: 1.85; margin-bottom: 8px;
 }
 .article-body li::marker { color: var(--amber-dim); }
 
 .article-body code {
-  font-family: 'DM Mono', monospace; font-size: 0.76rem;
-  background: var(--bg3); border: 1px solid var(--border);
-  border-radius: 3px; padding: 2px 6px; color: var(--amber);
+  font-family: 'DM Mono', monospace; font-size: 0.86rem;
+  background: var(--bg3); border: 1px solid var(--border-hi);
+  border-radius: 3px; padding: 2px 6px; color: var(--amber-bright);
 }
 .article-body pre {
-  background: #06060a; border: 1px solid var(--border);
-  border-left: 2px solid var(--amber-dim); border-radius: 6px;
-  padding: 18px; margin-bottom: 18px; overflow-x: hidden; position: relative;
+  background: var(--bg4); border: 1px solid var(--border-hi);
+  border-left: 3px solid var(--amber); border-radius: 6px;
+  padding: 20px 22px; margin-bottom: 24px; margin-top: 4px;
+  overflow-x: auto; position: relative;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
 .article-body pre::before {
   content: ''; position: absolute; top: 0; left: 0;
@@ -65,7 +72,7 @@ article {
 }
 .article-body pre code {
   background: none; border: none; padding: 0;
-  color: var(--text-mid); font-size: 0.72rem; line-height: 2;
+  color: var(--text); font-size: 0.82rem; line-height: 1.9;
 }
 
 .article-body blockquote {
@@ -79,7 +86,7 @@ article {
 
 .article-body table {
   width: 100%; border-collapse: collapse; margin-bottom: 18px;
-  font-size: 0.76rem;
+  font-size: 0.85rem;
 }
 .article-body th, .article-body td {
   text-align: left; padding: 10px 12px;
@@ -98,4 +105,6 @@ article {
 
 @media (max-width: 600px) {
   article { padding: 80px var(--page-pad) 32px; }
+  .article-body h2 { margin-top: 48px; }
+  .article-body pre { padding: 16px; }
 }
