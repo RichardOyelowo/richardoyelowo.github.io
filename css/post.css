@@ -6,11 +6,6 @@ article {
   max-width: var(--max-w); margin: 0 auto; padding: 100px var(--page-pad) 48px;
   width: 100%; flex: 1;
 }
-.article-meta, .article-title, .article-summary,
-.article-body > p, .article-body > h2, .article-body > h3,
-.article-body > ul, .article-body > ol, .article-body > blockquote {
-  max-width: 760px;
-}
 .article-meta {
   font-size: 0.6rem; letter-spacing: 3px; text-transform: uppercase;
   color: var(--amber); margin-bottom: 14px;
