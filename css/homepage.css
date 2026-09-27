@@ -142,7 +142,7 @@
 }
 .oss-desc {
   font-size: 0.8rem; color: var(--text-mid); line-height: 1.9;
-  margin-bottom: 20px; max-width: 380px;
+  margin-bottom: 20px;
 }
 .oss-features { list-style: none; margin-bottom: 28px; display: flex; flex-direction: column; gap: 8px; }
 .oss-features li {
@@ -302,7 +302,6 @@
   color: var(--text-mid);
   line-height: 2;
   margin-bottom: 32px;
-  max-width: 900px;
 }
 .contact-intro strong { color: var(--amber); font-weight: 500; }
 .contact-grid {
